@@ -39,7 +39,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. MASTER DICTIONARIES & KNOWLEDGE BASE
+# 1. MASTER PORTS & COUNTRY KNOWLEDGE BASE
 # ==========================================
 
 PORT_MAP = {
@@ -135,9 +135,132 @@ PORT_MAP = {
     "BUENOS AIRES": ("BO", "AR", "OH"),
 }
 
+# Country code and range lookup for unlisted/fallback ports
+COUNTRY_MAP = {
+    "TURKEY": ("TU", "ME"),
+    "TURKIYE": ("TU", "ME"),
+    "NIGERIA": ("NG", "AF"),
+    "TOGO": ("TG", "AF"),
+    "BENIN": ("BN", "AF"),
+    "GHANA": ("GH", "AF"),
+    "IVORY COAST": ("IV", "AF"),
+    "COTE D'IVOIRE": ("IV", "AF"),
+    "BURKINA FASO": ("BF", "AF"),
+    "NIGER": ("NR", "AF"),
+    "MALI": ("ML", "AF"),
+    "SENEGAL": ("SN", "AF"),
+    "SOUTH AFRICA": ("SA", "AF"),
+    "CAMEROON": ("CM", "AF"),
+    "CONGO": ("CG", "AF"),
+    "GABON": ("GA", "AF"),
+    "GUINEA": ("GN", "AF"),
+    "SIERRA LEONE": ("SL", "AF"),
+    "LIBERIA": ("LB", "AF"),
+    "MAURITANIA": ("MR", "AF"),
+    "EGYPT": ("EY", "AF"),
+    "MOROCCO": ("MC", "AF"),
+    "ALGERIA": ("AG", "AF"),
+    "TUNISIA": ("TS", "AF"),
+    "UNITED KINGDOM": ("UK", "UK"),
+    "UK": ("UK", "UK"),
+    "ENGLAND": ("UK", "UK"),
+    "SCOTLAND": ("UK", "UK"),
+    "IRELAND": ("IR", "UK"),
+    "NETHERLANDS": ("NL", "CT"),
+    "HOLLAND": ("NL", "CT"),
+    "BELGIUM": ("BG", "CT"),
+    "GERMANY": ("GR", "CT"),
+    "FRANCE": ("FR", "CT"),
+    "POLAND": ("PL", "CT"),
+    "DENMARK": ("DK", "CT"),
+    "SWEDEN": ("SE", "CT"),
+    "NORWAY": ("NW", "CT"),
+    "FINLAND": ("FL", "CT"),
+    "ESTONIA": ("ET", "CT"),
+    "LATVIA": ("LV", "CT"),
+    "LITHUANIA": ("LT", "CT"),
+    "UKRAINE": ("UE", "CT"),
+    "RUSSIA": ("RU", "CT"),
+    "SPAIN": ("SP", "ME"),
+    "ITALY": ("IT", "ME"),
+    "GREECE": ("GC", "ME"),
+    "PORTUGAL": ("PG", "ME"),
+    "CYPRUS": ("CY", "ME"),
+    "ROMANIA": ("RM", "ME"),
+    "BULGARIA": ("BG", "CT"),
+    "INDIA": ("IN", "FE"),
+    "CHINA": ("CH", "FE"),
+    "JAPAN": ("JP", "FE"),
+    "SOUTH KOREA": ("SK", "FE"),
+    "KOREA": ("SK", "FE"),
+    "VIETNAM": ("VT", "FE"),
+    "MALAYSIA": ("MY", "FE"),
+    "INDONESIA": ("ID", "FE"),
+    "THAILAND": ("TH", "FE"),
+    "SINGAPORE": ("SG", "FE"),
+    "TAIWAN": ("TW", "FE"),
+    "HONG KONG": ("HK", "FE"),
+    "HONGKONG": ("HK", "FE"),
+    "PAKISTAN": ("PK", "FE"),
+    "UNITED STATES": ("US", "NA"),
+    "USA": ("US", "NA"),
+    "CANADA": ("CN", "NA"),
+    "BRAZIL": ("BZ", "OH"),
+    "ARGENTINA": ("AR", "OH"),
+    "AUSTRALIA": ("AU", "OH"),
+    "NEW ZEALAND": ("NZ", "OH"),
+    "UNITED ARAB EMIRATES": ("AE", "OH"),
+    "UAE": ("AE", "OH"),
+    "DUBAI": ("AE", "OH"),
+    "SAUDI ARABIA": ("SB", "OH"),
+    "JORDAN": ("JD", "OH"),
+    "ISRAEL": ("IL", "OH"),
+}
+
 # ==========================================
-# 2. HYPER-INTELLIGENCE WEB SEARCH
+# 2. WEB SEARCH HYPER-INTELLIGENCE
 # ==========================================
+
+def search_web(query: str) -> str:
+    """Executes a search query and returns the summary text."""
+    try:
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        resp = requests.get(url, headers=headers, timeout=4)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            snippets = [s.get_text() for s in soup.find_all("a", class_="result__snippet")[:3]]
+            return " ".join(snippets).upper()
+    except Exception:
+        pass
+    return ""
+
+def resolve_port_info(pod_raw: str, use_web_search: bool = True) -> tuple:
+    """Resolves Port, Country, and Range, using web search for unlisted ports."""
+    clean_pod = pod_raw.upper().strip()
+
+    # Step 1: Direct match in PORT_MAP
+    for k, v in PORT_MAP.items():
+        if k in clean_pod:
+            return v
+
+    # Step 2: Check if country name is already in the POD text (e.g., "Izmit, Turkey")
+    for c_name, (c_code, r_code) in COUNTRY_MAP.items():
+        if c_name in clean_pod:
+            return ("OH", c_code, r_code)
+
+    # Step 3: Web Search Hyper-Intelligence for Unlisted Port
+    if use_web_search and len(clean_pod) > 2:
+        # Search query for the seaport
+        query = f"{clean_pod} seaport port which country"
+        search_result = search_web(query)
+        if search_result:
+            for c_name, (c_code, r_code) in COUNTRY_MAP.items():
+                if c_name in search_result:
+                    return ("OH", c_code, r_code)
+
+    # Fallback default
+    return ("OH", "OH", "AF")
 
 def search_web_for_commodity(query_text: str) -> str:
     cleaned = re.sub(r"[^A-Za-z\s]", " ", query_text)
@@ -145,17 +268,7 @@ def search_web_for_commodity(query_text: str) -> str:
     search_term = " ".join(words)
     if not search_term.strip():
         return ""
-    try:
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(search_term + ' product what is')}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=4)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            snippets = [s.get_text() for s in soup.find_all("a", class_="result__snippet")[:2]]
-            return " ".join(snippets).upper()
-    except Exception:
-        pass
-    return ""
+    return search_web(f"{search_term} product what is")
 
 def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = False) -> str:
     t = (desc + " " + hs_code).upper()
@@ -229,7 +342,6 @@ def normalize_container(sz_text: str):
     return "40D"
 
 def is_empty_equipment(text: str) -> bool:
-    """Strictly checks for EMPTY CONTAINERS/TANKS, ignoring spare empty packing bags."""
     t = text.upper()
     empty_equipment_patterns = [
         r"\bEMPTY\s+(?:CONTAINER|ISO\s*TANK|TANK|CNTR|REEFER|UNIT|EQUIPMENT)\b",
@@ -252,7 +364,6 @@ def parse_num(val_str: str) -> float:
         return 0.0
 
 def determine_carrier_agent(vessel_name: str, full_doc_text: str):
-    """Detects shipping line and agent accurately based on vessel and document headers."""
     v = vessel_name.upper()
     if "CMA CGM" in v:
         return "CMA CGM", "CMA CGM GH. LTD."
@@ -271,10 +382,8 @@ def determine_carrier_agent(vessel_name: str, full_doc_text: str):
 # ==========================================
 
 def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
-    """Extracts actual Cargo Gross Weight in MT, properly summing multiple containers."""
     cleaned = re.sub(r"Tare\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
 
-    # 1. Search for explicit overall B/L Gross Weight
     explicit_totals = re.findall(
         r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|TOTAL\s+CARGO\s+GROSS\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT|MTS)",
         cleaned,
@@ -287,7 +396,6 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
         elif val > 0:
             return round(val, 2)
 
-    # 2. Look for the standalone Gross Weight Column value
     col_totals = re.findall(
         r"(?:^|\n)\s*([\d\.,]+)\s*KGS\s*\n\s*(?:Basic Ocean|Container Protect|Inland Haulage|Additional Import|Storage Export|Inspection Fee|Demurrage|Detention|Electronic Cargo|Terminal Handling|Port Additionals|Import Service|Documentation fee|Verified Gross Mass|Rollable Compensation|3rd Party)",
         cleaned,
@@ -300,7 +408,6 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
         elif val > 0:
             return round(val, 2)
 
-    # 3. Collect individual container weights and SUM them if multiple exist
     item_matches = re.findall(
         r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES)\s+([\d\s\.,]+)\s*KGS",
         cleaned,
@@ -319,7 +426,6 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
             else:
                 return round(max(container_weights) / 1000.0, 2)
 
-    # 4. Fallback: all numbers with KGS
     fallbacks = re.findall(r"([\d\.,]+)\s*KGS", cleaned, re.IGNORECASE)
     valid_nums = [parse_num(w) for w in fallbacks if parse_num(w) > 500]
     if valid_nums:
@@ -336,7 +442,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = False):
 
     carrier, agent = determine_carrier_agent(ship, pdf_text)
 
-    # Regex splits across multi-line or alphanumeric B/Ls cleanly
     bl_chunks = re.split(r"(?:\n|^)\s*(?=[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL))", pdf_text)
     for chunk in bl_chunks:
         if not ("MAEU" in chunk or "WAYBILL" in chunk):
@@ -344,14 +449,11 @@ def parse_maersk(pdf_text: str, use_web_search: bool = False):
         if is_empty_equipment(chunk):
             continue
 
-        pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del):\s*([^,\n]+)", chunk, re.IGNORECASE)
+        pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del):\s*([^,\n]+(?:,[^,\n]+)?)", chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
 
-        port_info = ("OH", "OH", "AF")
-        for k, v in PORT_MAP.items():
-            if k in pod_raw:
-                port_info = v
-                break
+        # Resolves Port, Country, Range with Web Search for unlisted ports
+        port_info = resolve_port_info(pod_raw, use_web_search)
 
         cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)[^\n]*)", chunk, re.IGNORECASE)
         cont_type = "40D"
@@ -408,11 +510,7 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
         pod_m = re.search(r"Final Port of Discharge\s*([^\n]+)", bl_chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else ""
 
-        port_info = ("OH", "OH", "AF")
-        for k, v in PORT_MAP.items():
-            if k in pod_raw:
-                port_info = v
-                break
+        port_info = resolve_port_info(pod_raw, use_web_search)
 
         total_m = re.findall(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", bl_chunk, re.IGNORECASE)
         if total_m:
@@ -462,11 +560,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
         pod_m = re.search(r"Port of Discharge:\s*([^\n]+)", pdf_text, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "PORT VENDRES"
 
-        port_info = ("BD", "FR", "CT")
-        for k, v in PORT_MAP.items():
-            if k in pod_raw:
-                port_info = v
-                break
+        port_info = resolve_port_info(pod_raw, use_web_search)
 
         is_breakbulk = "PALLETS IN HOLD" in chunk.upper()
         cont_type = ""
@@ -504,7 +598,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
 # ==========================================
 
 st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Automated coding engine with OCR, Multi-Container Gross Weight Aggregation, and Web Search Hyper-Intelligence.")
+st.markdown("Automated coding engine with OCR, Port/Commodity Web Search, and Gross Weight Aggregation.")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -530,7 +624,7 @@ with col2:
     }[rotation_option]
 
 with col3:
-    enable_web_search = st.checkbox("🌐 Enable Web Search Hyper-Intelligence", value=True)
+    enable_web_search = st.checkbox("🌐 Enable Web Search (Ports & Commodities)", value=True)
     show_debug_text = st.checkbox("Show Raw Text Preview (Diagnostics)", value=False)
 
 uploaded_files = st.file_uploader("Upload Manifest PDFs", type=["pdf"], accept_multiple_files=True)
@@ -571,7 +665,7 @@ if uploaded_files:
                 with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
                     st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
 
-            status_text.text("Processing B/L records and formatting Gross Weights...")
+            status_text.text("Resolving Ports, Commodities, and Gross Weights...")
 
             parsed = []
             if "ML Export Manifest" in full_text or "MAEU" in full_text:
@@ -599,7 +693,7 @@ if uploaded_files:
             col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
             df = df[col_order]
 
-            st.success(f" Successfully processed {len(df)} B/L records with formatted Gross Weights!")
+            st.success(f" Successfully processed {len(df)} B/L records!")
             st.subheader("Interactive Review Screen (Edit if needed)")
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
