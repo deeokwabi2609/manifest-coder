@@ -5,6 +5,9 @@ from PIL import Image
 import pytesseract
 import re
 import io
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 
 st.set_page_config(page_title="Ghana Export Manifest Auto-Coder", layout="wide")
 
@@ -131,48 +134,95 @@ PORT_MAP = {
     "BUENOS AIRES": ("BO", "AR", "OH"),
 }
 
-def classify_commodity(desc: str, hs_code: str = "") -> str:
+# ==========================================
+# 2. HYPER-INTELLIGENCE WEB SEARCH ENGINE
+# ==========================================
+
+def search_web_for_commodity(query_text: str) -> str:
+    """Searches the web for unfamiliar trade names or chemicals to describe what they are."""
+    # Clean up numbers and shipping noise
+    cleaned = re.sub(r"[^A-Za-z\s]", " ", query_text)
+    words = [w for w in cleaned.split() if len(w) > 3 and w.upper() not in ["CARTON", "BAGS", "PACKAGE", "CONTAINER", "WEIGHT", "GROSS", "NET"]][:4]
+    search_term = " ".join(words)
+    if not search_term.strip():
+        return ""
+    try:
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(search_term + ' product what is')}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        resp = requests.get(url, headers=headers, timeout=4)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            snippets = [s.get_text() for s in soup.find_all("a", class_="result__snippet")[:2]]
+            return " ".join(snippets).upper()
+    except Exception:
+        pass
+    return ""
+
+def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = False) -> str:
     t = (desc + " " + hs_code).upper()
-    if any(k in t for k in ["COCOA BEAN", "RAW COCOA", "BEANS OF COCOA"]) or hs_code.startswith("1801"):
-        return "LCB"
-    if any(k in t for k in ["COCOA BUTTER", "COCOA CAKE", "COCOA POWDER", "COCOA LIQUOR", "COCOA PASTE", "CHOCOLATE"]) or hs_code.startswith(("1803", "1804", "1805", "1806")):
-        return "LCP"
-    if "BANANA" in t or hs_code.startswith("0803"):
-        return "LBN"
-    if "PINEAPPLE" in t or hs_code.startswith("080430"):
-        return "LPN"
-    if "YAM" in t or hs_code.startswith("0714"):
-        return "LYM"
-    if any(k in t for k in ["CASHEW", "ANACARDE"]) or hs_code.startswith("080131"):
-        return "LCA"
-    if any(k in t for k in ["SHEA NUT", "SHEANUT", "KARITE"]):
-        return "LSH"
-    if any(k in t for k in ["TUNA", "FROZEN FISH", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE"]) or hs_code.startswith("0303"):
-        return "LFI"
-    if "CANNED TUNA" in t or "CANNED FISH" in t:
-        return "LFS"
-    if any(k in t for k in ["ROUND LOG", "TEAK POLE", "LOGS", "ROUGHS"]):
-        return "LLG"
-    if any(k in t for k in ["LUMBER", "SAWN TIMBER", "TEAK IN CONTAINER"]):
-        return "LST"
-    if any(k in t for k in ["FURNITURE", "DOOR", "MOULDING"]):
-        return "LFW"
-    if any(k in t for k in ["SCRAP", "COPPER SCRAP", "ALUMINIUM SCRAP", "BATTERY SCRAP", "STEEL SCRAP", "IRON SCRAP"]) or hs_code.startswith(("7204", "7404", "7602")):
-        return "LMS"
-    if any(k in t for k in ["RUBBER", "TIRE", "TYRE", "TUBES"]):
-        return "LRB"
-    if any(k in t for k in ["ALUMINIUM INGOT", "ALUMINUM INGOT"]):
-        return "LAL"
-    if any(k in t for k in ["VEHICLE", "USED AUTO", "CARS", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA"]) or hs_code.startswith("8703"):
-        return "LVE"
-    if any(k in t for k in ["TRUCK", "FORKLIFT", "TRACTOR"]) or hs_code.startswith("8704"):
-        return "LTR"
-    if any(k in t for k in ["MACHINE", "ENGINE", "PUMP", "APPARATUS", "EQUIPMENT"]) or hs_code.startswith(("84", "85")):
-        return "LME"
-    if any(k in t for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE"]) or hs_code.startswith(("28", "29", "38", "3901")):
-        return "LCH"
-    if any(k in t for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES"]):
-        return "LPE"
+
+    def match_rules(text_to_check):
+        # 1. Cocoa & Products
+        if any(k in text_to_check for k in ["COCOA BEAN", "RAW COCOA", "BEANS OF COCOA"]) or hs_code.startswith("1801"):
+            return "LCB"
+        if any(k in text_to_check for k in ["COCOA BUTTER", "COCOA CAKE", "COCOA POWDER", "COCOA LIQUOR", "COCOA PASTE", "CHOCOLATE"]) or hs_code.startswith(("1803", "1804", "1805", "1806")):
+            return "LCP"
+        # 2. Fruits & Agricultural
+        if "BANANA" in text_to_check or hs_code.startswith("0803"):
+            return "LBN"
+        if "PINEAPPLE" in text_to_check or hs_code.startswith("080430"):
+            return "LPN"
+        if "YAM" in text_to_check or hs_code.startswith("0714"):
+            return "LYM"
+        if any(k in text_to_check for k in ["CASHEW", "ANACARDE"]) or hs_code.startswith("080131"):
+            return "LCA"
+        if any(k in text_to_check for k in ["SHEA NUT", "SHEANUT", "KARITE"]):
+            return "LSH"
+        # 3. Fish & Meat
+        if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO"]) or hs_code.startswith(("0207", "0303", "0201", "0202")):
+            return "LFI"
+        if "CANNED TUNA" in text_to_check or "CANNED FISH" in text_to_check:
+            return "LFS"
+        # 4. Timber & Wood
+        if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS"]):
+            return "LLG"
+        if any(k in text_to_check for k in ["LUMBER", "SAWN TIMBER", "TEAK IN CONTAINER"]):
+            return "LST"
+        if any(k in text_to_check for k in ["FURNITURE", "DOOR", "MOULDING"]):
+            return "LFW"
+        # 5. Metal / Scraps / Rubber / Minerals
+        if any(k in text_to_check for k in ["SCRAP", "COPPER SCRAP", "ALUMINIUM SCRAP", "STEEL SCRAP", "IRON SCRAP"]) or hs_code.startswith(("7204", "7404", "7602")):
+            return "LMS"
+        if any(k in text_to_check for k in ["RUBBER", "TIRE", "TYRE", "TUBES"]):
+            return "LRB"
+        if any(k in text_to_check for k in ["ALUMINIUM INGOT", "ALUMINUM INGOT"]):
+            return "LAL"
+        if any(k in text_to_check for k in ["VEHICLE", "USED AUTO", "CARS", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "AUTOS"]) or hs_code.startswith("8703"):
+            return "LVE"
+        if any(k in text_to_check for k in ["TRUCK", "FORKLIFT", "TRACTOR"]) or hs_code.startswith("8704"):
+            return "LTR"
+        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS"]) or hs_code.startswith(("84", "85")):
+            return "LME"
+        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT"]) or hs_code.startswith(("2501", "2520", "28", "29", "38", "3901")):
+            return "LCH"
+        # 6. Processed Goods
+        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR"]):
+            return "LPE"
+        return None
+
+    # Step 1: Direct Match
+    result = match_rules(t)
+    if result:
+        return result
+
+    # Step 2: Hyper-Intelligence Web Search (if enabled)
+    if use_web_search and len(desc.strip()) > 3:
+        web_info = search_web_for_commodity(desc)
+        if web_info:
+            searched_result = match_rules(web_info)
+            if searched_result:
+                return searched_result
+
     return "LGC"
 
 def normalize_container(sz_text: str):
@@ -196,32 +246,50 @@ def is_empty_equipment(text: str) -> bool:
     return any(p in t for p in empty_patterns)
 
 # ==========================================
-# 2. ROBUST EXTRACTION & OCR ENGINE
+# 3. EXTRACTION ENGINES (GROSS WEIGHT FOCUS)
 # ==========================================
 
-def extract_page_text_with_ocr(page, user_rot: int, enable_ocr: bool):
-    """Extracts text, handling rotation and OCR for image-only scans."""
-    if user_rot != 0:
-        page.set_rotation(user_rot)
+def extract_maersk_gross_weight(chunk: str) -> float:
+    """Extracts actual Cargo Gross Weight in MT, strictly ignoring container Tare."""
+    # Strip out Tare weight lines completely so they are never chosen
+    cleaned_chunk = re.sub(r"Tare\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
 
-    text = page.get_text("text")
+    # 1. Look for explicit Gross Weight statements
+    gw_patterns = [
+        r"(?:TOTAL GROSS WEIGHT|GROSS WEIGHT|TOTAL GR\. WT|GROSS WT|GW|G\.W\.)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT)",
+        r"(?:NET WEIGHT[^\n]+)?\s*([\d\s\.,]+)\s*KGS\s+[\d\.,]+\s*CBM",
+        r"\b([\d\.,]+)\s*KGS\s*\n\s*(?:Basic Ocean Freight|Container Protect|Inland Haulage)",
+        r"(\d+)\s*(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE)\s+([\d\s\.,]+)\s*KGS"
+    ]
 
-    # If digital text is missing or extremely short, trigger OCR
-    if len(text.strip()) < 40 and enable_ocr:
-        pix = page.get_pixmap(dpi=150)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    for pat in gw_patterns:
+        m = re.findall(pat, cleaned_chunk, re.IGNORECASE)
+        if m:
+            val_str = m[0][-1] if isinstance(m[0], tuple) else m[0]
+            val_str = val_str.replace(" ", "").replace(",", "")
+            try:
+                val = float(val_str)
+                # If number is > 500, it's in KG, so convert to MT
+                if val > 500:
+                    val = round(val / 1000.0, 2)
+                return val
+            except Exception:
+                continue
+
+    # Fallback: scan for any large number followed by KGS (Tare is already stripped)
+    fallbacks = re.findall(r"([\d\.,\s]+)\s*KGS", cleaned_chunk, re.IGNORECASE)
+    for f in fallbacks:
+        v_str = f.replace(" ", "").replace(",", "")
         try:
-            text = pytesseract.image_to_string(img)
+            val = float(v_str)
+            if val > 500:
+                return round(val / 1000.0, 2)
         except Exception:
-            pass  # Fallback if tesseract binary is warming up
+            continue
 
-    return text
+    return 0.0
 
-# ==========================================
-# 3. CARRIER PARSERS
-# ==========================================
-
-def parse_maersk(pdf_text: str):
+def parse_maersk(pdf_text: str, use_web_search: bool = False):
     rows = []
     ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)(?:Voyage|Page|\n)", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip() if ship_m else "BOSTON"
@@ -249,21 +317,15 @@ def parse_maersk(pdf_text: str):
             cont_qty = int(cont_matches[0][0])
             cont_type = normalize_container(cont_matches[0][1])
 
-        wgt_m = re.search(r"([\d\.,\s]+)\s*KGS", chunk, re.IGNORECASE)
-        tonnage = 0.0
-        if wgt_m:
-            raw_w = wgt_m.group(1).replace(" ", "").replace(",", "")
-            try:
-                tonnage = round(float(raw_w) / 1000.0, 2)
-            except:
-                tonnage = 0.0
+        # Extract GROSS Weight (Tare is completely excluded)
+        tonnage = extract_maersk_gross_weight(chunk)
 
         hs_m = re.search(r"HS\s*(?:Code|CODE)?\s*[:\.]?\s*(\d{4,10})", chunk)
         hs = hs_m.group(1) if hs_m else ""
         desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n[A-Z0-9]{7,12}|$)", chunk, re.IGNORECASE)
         desc = desc_m.group(1).strip() if desc_m else ""
 
-        comm = classify_commodity(desc, hs)
+        comm = classify_commodity(desc, hs, use_web_search)
 
         if tonnage > 0:
             rows.append({
@@ -280,7 +342,7 @@ def parse_maersk(pdf_text: str):
             })
     return rows
 
-def parse_cmacgm(pdf_text: str):
+def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
     rows = []
     ship_m = re.search(r"VESSEL:\s*([A-Z0-9\s]+?)\s*FLAG:", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip() if ship_m else "MAERSK HANGZHOU"
@@ -299,6 +361,7 @@ def parse_cmacgm(pdf_text: str):
                 port_info = v
                 break
 
+        # Gross Weight in CMA CGM is reported under B/L TOTAL WGT: ... TNE
         wgt_m = re.search(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", chunk, re.IGNORECASE)
         if not wgt_m:
             wgt_m = re.search(r"WGT:\s*([\d\.]+)\s*TNE", chunk, re.IGNORECASE)
@@ -311,7 +374,7 @@ def parse_cmacgm(pdf_text: str):
         desc_m = re.search(r"DESCRIPTION\s*([\s\S]+?)(?:FREIGHT|B/L TOTAL|SPLIT)", chunk, re.IGNORECASE)
         desc = desc_m.group(1).strip() if desc_m else ""
 
-        comm = classify_commodity(desc)
+        comm = classify_commodity(desc, use_web_search=use_web_search)
 
         if tonnage > 0:
             rows.append({
@@ -328,7 +391,7 @@ def parse_cmacgm(pdf_text: str):
             })
     return rows
 
-def parse_ael(pdf_text: str):
+def parse_ael(pdf_text: str, use_web_search: bool = False):
     rows = []
     ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip().upper() if ship_m else "CAMEROUN EXPRESS"
@@ -382,8 +445,8 @@ def parse_ael(pdf_text: str):
 # 4. USER INTERFACE
 # ==========================================
 
-st.title("🚢 Ghana Ports Export Manifest Auto-Coder (with OCR)")
-st.markdown("Upload your shipping manifest PDF to automatically extract, orient, and code data into your standard format.")
+st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
+st.markdown("Automated coding engine with OCR, Gross Weight prioritization, and Web Search Hyper-Intelligence.")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -409,7 +472,7 @@ with col2:
     }[rotation_option]
 
 with col3:
-    enable_ocr = st.checkbox("Enable OCR for Scanned Images", value=True)
+    enable_web_search = st.checkbox("🌐 Enable Web Search Hyper-Intelligence", value=True)
     show_debug_text = st.checkbox("Show Raw Text Preview (Diagnostics)", value=False)
 
 uploaded_files = st.file_uploader("Upload Manifest PDFs", type=["pdf"], accept_multiple_files=True)
@@ -429,10 +492,21 @@ if uploaded_files:
             pages_text = []
 
             for p_idx in range(total_pages):
-                status_text.text(f"Extracting & Orienting page {p_idx + 1} of {total_pages}...")
+                status_text.text(f"Orienting & reading page {p_idx + 1} of {total_pages}...")
                 page = doc[p_idx]
-                t = extract_page_text_with_ocr(page, rotation_degrees, enable_ocr)
-                pages_text.append(t)
+                if rotation_degrees != 0:
+                    page.set_rotation(rotation_degrees)
+                
+                txt = page.get_text("text")
+                if len(txt.strip()) < 40:
+                    # Trigger OCR fallback if scanned image
+                    pix = page.get_pixmap(dpi=150)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    try:
+                        txt = pytesseract.image_to_string(img)
+                    except Exception:
+                        pass
+                pages_text.append(txt)
 
             full_text = "\n".join(pages_text)
 
@@ -440,18 +514,19 @@ if uploaded_files:
                 with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
                     st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
 
-            status_text.text("Matching shipping lines & coding master tables...")
+            status_text.text("Extracting Gross Weights & running Hyper-Intelligence commodity classifier...")
 
             parsed = []
             if "MAERSK" in full_text and ("ML Export Manifest" in full_text or "MAEU" in full_text):
-                parsed = parse_maersk(full_text)
+                parsed = parse_maersk(full_text, enable_web_search)
             elif "CMA CGM" in full_text or "CMA\\CGM" in full_text:
-                parsed = parse_cmacgm(full_text)
+                parsed = parse_cmacgm(full_text, enable_web_search)
             elif "EOLIS" in full_text or "Cameroun Express" in full_text or "AFRICA EXPRESS" in full_text:
-                parsed = parse_ael(full_text)
+                parsed = parse_ael(full_text, enable_web_search)
             else:
-                # Try all parsers
-                parsed = parse_maersk(full_text) or parse_cmacgm(full_text) or parse_ael(full_text)
+                parsed = (parse_maersk(full_text, enable_web_search) or 
+                          parse_cmacgm(full_text, enable_web_search) or 
+                          parse_ael(full_text, enable_web_search))
 
             for r in parsed:
                 r["MONTH"] = month_selected
@@ -467,7 +542,7 @@ if uploaded_files:
             col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
             df = df[col_order]
 
-            st.success(f"Successfully processed and coded {len(df)} manifest rows!")
+            st.success(f" Successfully processed and coded {len(df)} manifest rows using Gross Weights!")
             st.subheader("Interactive Review Screen (Edit if needed)")
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
@@ -482,4 +557,4 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.error("No valid cargo rows were found. Tip: If the manifest is sideways, change 'Document Orientation' to '90° Clockwise' or check 'Show Raw Text Preview' to see what was extracted.")
+            st.error("No valid cargo rows were found. Tip: If the manifest is sideways, select '90° Clockwise' in orientation.")
