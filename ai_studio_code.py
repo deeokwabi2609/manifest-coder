@@ -14,7 +14,7 @@ def check_password():
     """Returns True if the user entered the correct password."""
     def password_entered():
         # YOU CAN CHANGE YOUR PASSWORD HERE:
-        if st.session_state["password"] == "GhanaPort2026":
+        if st.session_state["password"] == "GsaMeta@123":
             st.session_state["password_correct"] = True
             del st.session_state["password"]  # Don't keep password in memory
         else:
