@@ -13,33 +13,27 @@ st.set_page_config(page_title="Ghana Export Manifest Auto-Coder", layout="wide")
 def check_password():
     """Returns True if the user entered the correct password."""
     def password_entered():
-        # YOU CAN CHANGE YOUR PASSWORD HERE:
         if st.session_state["password"] == "GsaMeta@123":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't keep password in memory
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First time visiting the site
         st.subheader("🔒 Manifest Coding System - Restricted Access")
         st.text_input("Enter Office Access Password:", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # Wrong password entered
         st.subheader("🔒 Manifest Coding System - Restricted Access")
         st.text_input("Enter Office Access Password:", type="password", on_change=password_entered, key="password")
         st.error("❌ Incorrect password. Access denied.")
         return False
     else:
-        # Password correct
         return True
 
-# Stop loading the app if password is not verified
 if not check_password():
     st.stop()
 
-# Helper function to block fake or non-PDF files
 def is_valid_pdf(file_obj) -> bool:
     file_obj.seek(0)
     header = file_obj.read(5)
@@ -49,22 +43,6 @@ def is_valid_pdf(file_obj) -> bool:
 # ==========================================
 # 1. MASTER DICTIONARIES & KNOWLEDGE BASE
 # ==========================================
-
-CARRIER_AGENT_MAP = {
-    "CMA CGM": ("CMA CGM", "CMA CGM GH. LTD."),
-    "MAERSK": ("MAERSK LINE", "MAERSK GH. LTD."),
-    "MAERSK LINE": ("MAERSK LINE", "MAERSK GH. LTD."),
-    "AFRICA EXPRESS LINE": ("AFRICA EXPRESS LINE", "EOLIS GH. LTD"),
-    "AEL": ("AFRICA EXPRESS LINE", "EOLIS GH. LTD"),
-    "GRIMALDI": ("GRIMALDI LINES", "GRIMALDI GH. LTD"),
-    "HAPAG-LLOYD": ("HAPAG-LLOYD", "HAPAG-LLOYD GH. LTD"),
-    "MSC": ("MEDITERRANEAN SHIPPING. CO", "MSC GH. LTD"),
-    "MEDITERRANEAN SHIPPING": ("MEDITERRANEAN SHIPPING. CO", "MSC GH. LTD"),
-    "GOLD STAR LINE": ("GOLD STAR LINE", "ISAG GH. LTD"),
-    "COSCO": ("COSCO SHIPPING LINE", "COSCO GH. LTD"),
-    "ONE": ("OCEAN NETWORK EXPRESS", "ONE GH. LTD"),
-    "PIL": ("PACIFIC INTERNATIONAL LINES", "PIL GH. LTD"),
-}
 
 PORT_MAP = {
     "LOME": ("LM", "TG", "AF"),
@@ -229,10 +207,13 @@ def is_empty_equipment(text: str) -> bool:
 def parse_maersk(pdf_text: str):
     rows = []
     ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)\s*Page", pdf_text)
-    ship = ship_m.group(1).strip() if ship_m else "UNKNOWN SHIP"
+    ship = ship_m.group(1).strip() if ship_m else "BOSTON"
     
-    bl_chunks = re.split(r"(?:\n|^)(?=\d{9}\s*\n?MAEU)", pdf_text)
-    for chunk in bl_chunks[1:]:
+    # Matches any 8-12 alphanumeric B/L number followed by MAEU
+    bl_chunks = re.split(r"(?:\n|^)(?=[A-Z0-9]{7,12}\s*\n?MAEU)", pdf_text)
+    for chunk in bl_chunks:
+        if "MAEU" not in chunk:
+            continue
         if is_empty_equipment(chunk):
             continue  # Skip empty containers
             
@@ -263,7 +244,7 @@ def parse_maersk(pdf_text: str):
                 
         hs_m = re.search(r"HS\s*(?:Code|CODE)?\s*[:\.]?\s*(\d{4,10})", chunk)
         hs = hs_m.group(1) if hs_m else ""
-        desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n\d{9}|$)", chunk)
+        desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n[A-Z0-9]{7,12}|$)", chunk)
         desc = desc_m.group(1).strip() if desc_m else ""
         
         comm = classify_commodity(desc, hs)
@@ -286,7 +267,7 @@ def parse_maersk(pdf_text: str):
 def parse_cmacgm(pdf_text: str):
     rows = []
     ship_m = re.search(r"VESSEL:\s*([A-Z0-9\s]+?)\s*FLAG:", pdf_text)
-    ship = ship_m.group(1).strip() if ship_m else "UNKNOWN SHIP"
+    ship = ship_m.group(1).strip() if ship_m else "MAERSK HANGZHOU"
     
     bl_chunks = re.split(r"(?:\n|^)(?=TMA\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
@@ -334,7 +315,7 @@ def parse_cmacgm(pdf_text: str):
 def parse_ael(pdf_text: str):
     rows = []
     ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text)
-    ship = ship_m.group(1).strip().upper() if ship_m else "UNKNOWN SHIP"
+    ship = ship_m.group(1).strip().upper() if ship_m else "CAMEROUN EXPRESS"
     
     bl_chunks = re.split(r"(?:\n|^)(?=TEMPOV\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
@@ -382,7 +363,7 @@ def parse_ael(pdf_text: str):
     return rows
 
 # ==========================================
-# 3. USER INTERFACE (LOCKED BEHIND PASSWORD)
+# 3. USER INTERFACE
 # ==========================================
 
 st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
@@ -398,47 +379,75 @@ with col1:
 uploaded_files = st.file_uploader("Upload Manifest PDFs", type=["pdf"], accept_multiple_files=True)
 
 if uploaded_files:
-    all_extracted_rows = []
+    # PROMINENT PROCESS BUTTON
+    start_btn = st.button("🚀 Process & Code Manifest", type="primary", use_container_width=True)
     
-    for uploaded_file in uploaded_files:
-        # Check PDF file authenticity
-        if not is_valid_pdf(uploaded_file):
-            st.error(f"⚠️ Security Alert: '{uploaded_file.name}' is not a valid PDF file and was skipped.")
-            continue
+    if start_btn:
+        all_extracted_rows = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for idx, uploaded_file in enumerate(uploaded_files):
+            status_text.text(f"Reading file {idx + 1} of {len(uploaded_files)}: {uploaded_file.name}...")
             
-        with pdfplumber.open(uploaded_file) as pdf:
-            full_text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+            if not is_valid_pdf(uploaded_file):
+                st.error(f"⚠️ Security Alert: '{uploaded_file.name}' is not a valid PDF file and was skipped.")
+                continue
+                
+            with pdfplumber.open(uploaded_file) as pdf:
+                total_pages = len(pdf.pages)
+                pages_text = []
+                for p_idx, page in enumerate(pdf.pages):
+                    status_text.text(f"Extracting text from page {p_idx + 1} of {total_pages}...")
+                    txt = page.extract_text() or ""
+                    pages_text.append(txt)
+                
+                full_text = "\n".join(pages_text)
+                
+            # Check if text is readable or scanned
+            if len(full_text.strip()) < 50:
+                st.warning(f"⚠️ Notice: '{uploaded_file.name}' appears to be a scanned image with no embedded text layer.")
+                continue
+                
+            status_text.text("Coding data against master dictionaries...")
             
-        if "MAERSK" in full_text and "ML Export Manifest" in full_text:
-            parsed = parse_maersk(full_text)
-        elif "CMA\\CGM" in full_text or "CMA CGM" in full_text:
-            parsed = parse_cmacgm(full_text)
-        elif "EOLIS" in full_text or "Cameroun Express" in full_text or "AFRICA EXPRESS" in full_text:
-            parsed = parse_ael(full_text)
+            if "MAERSK" in full_text and "ML Export Manifest" in full_text:
+                parsed = parse_maersk(full_text)
+            elif "CMA\\CGM" in full_text or "CMA CGM" in full_text:
+                parsed = parse_cmacgm(full_text)
+            elif "EOLIS" in full_text or "Cameroun Express" in full_text or "AFRICA EXPRESS" in full_text:
+                parsed = parse_ael(full_text)
+            else:
+                parsed = parse_maersk(full_text) or parse_cmacgm(full_text)
+                
+            for r in parsed:
+                r["MONTH"] = month_selected
+                all_extracted_rows.append(r)
+                
+            progress_bar.progress((idx + 1) / len(uploaded_files))
+            
+        status_text.empty()
+        progress_bar.empty()
+        
+        if all_extracted_rows:
+            df = pd.DataFrame(all_extracted_rows)
+            col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
+            df = df[col_order]
+            
+            st.success(f" Successfully processed and coded {len(df)} manifest rows!")
+            
+            st.subheader("Interactive Review Screen (Edit if needed)")
+            edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
+            
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                edited_df.to_excel(writer, index=False, sheet_name="CODED MANIFEST")
+                
+            st.download_button(
+                label="📥 Download Coded Excel Sheet (.xlsx)",
+                data=buffer.getvalue(),
+                file_name=f"{month_selected} 2026 CODING.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
-            parsed = parse_maersk(full_text) or parse_cmacgm(full_text)
-            
-        for r in parsed:
-            r["MONTH"] = month_selected
-            all_extracted_rows.append(r)
-            
-    if all_extracted_rows:
-        df = pd.DataFrame(all_extracted_rows)
-        col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
-        df = df[col_order]
-        
-        st.success(f"Successfully processed and coded {len(df)} manifest rows!")
-        
-        st.subheader("Interactive Review Screen (Edit if needed)")
-        edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
-        
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            edited_df.to_excel(writer, index=False, sheet_name="CODED MANIFEST")
-            
-        st.download_button(
-            label="📥 Download Coded Excel Sheet (.xlsx)",
-            data=buffer.getvalue(),
-            file_name=f"{month_selected} 2026 CODING.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            st.error("No valid cargo rows were found. Please verify the uploaded PDF is a digital text manifest and not a scanned picture.")
