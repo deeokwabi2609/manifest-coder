@@ -60,6 +60,7 @@ PORT_MAP = {
     "DOUALA": ("DL", "CM", "AF"),
     "DURBAN": ("DR", "SA", "AF"),
     "CAPETOWN": ("CN", "SA", "AF"),
+    "CAPE TOWN": ("CN", "SA", "AF"),
     "PORT ELIZABETH": ("PE", "SA", "AF"),
     "TEMA": ("TM", "GH", "AF"),
     "TAKORADI": ("TD", "GH", "AF"),
@@ -174,13 +175,13 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LCA"
         if any(k in text_to_check for k in ["SHEA NUT", "SHEANUT", "KARITE"]):
             return "LSH"
-        if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO"]) or hs_code.startswith(("0207", "0303", "0201", "0202")):
+        if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO", "PRAWNS", "SEAFOOD"]) or hs_code.startswith(("0207", "0303", "0306", "0201", "0202")):
             return "LFI"
         if "CANNED TUNA" in text_to_check or "CANNED FISH" in text_to_check:
             return "LFS"
-        if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS"]):
+        if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS", "ROUGH SQUARE LOGS", "ROUGH SQUARES", "TEAK ROUGH"]):
             return "LLG"
-        if any(k in text_to_check for k in ["LUMBER", "SAWN TIMBER", "TEAK IN CONTAINER"]):
+        if any(k in text_to_check for k in ["LUMBER", "SAWN TIMBER", "TEAK SAWN", "TEAK IN CONTAINER"]) or hs_code.startswith("4407"):
             return "LST"
         if any(k in text_to_check for k in ["FURNITURE", "DOOR", "MOULDING"]):
             return "LFW"
@@ -190,15 +191,15 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LRB"
         if any(k in text_to_check for k in ["ALUMINIUM INGOT", "ALUMINUM INGOT"]):
             return "LAL"
-        if any(k in text_to_check for k in ["VEHICLE", "USED AUTO", "CARS", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "AUTOS"]) or hs_code.startswith("8703"):
+        if any(k in text_to_check for k in ["VEHICLE", "USED AUTO", "CARS", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "AUTOS", "AUTORICKSHAW", "BAJAJ"]) or hs_code.startswith("8703"):
             return "LVE"
         if any(k in text_to_check for k in ["TRUCK", "FORKLIFT", "TRACTOR"]) or hs_code.startswith("8704"):
             return "LTR"
-        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS"]) or hs_code.startswith(("84", "85")):
+        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "MOULDS", "LATHE"]) or hs_code.startswith(("84", "85")):
             return "LME"
-        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT"]) or hs_code.startswith(("2501", "2520", "28", "29", "38", "3901")):
+        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE"]) or hs_code.startswith(("2501", "2520", "28", "29", "38", "3901")):
             return "LCH"
-        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR"]):
+        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR", "RICE", "PARBOILED RICE", "TOBACCO", "TEA", "MEDICINE", "PHARMACEUTICAL", "SESAME"]):
             return "LPE"
         return None
 
@@ -228,12 +229,20 @@ def normalize_container(sz_text: str):
     return "40D"
 
 def is_empty_equipment(text: str) -> bool:
+    """Strictly checks for EMPTY CONTAINERS/TANKS, ignoring spare empty packing bags."""
     t = text.upper()
-    empty_patterns = [
-        "EMPTY", "EMPTY ISO TANK", "RESIDUE (SOC)", "EMPTY CONTAINER",
-        "MT CONTAINER", "SHIPPERS OWNED CONTAINER WITH RESIDUE"
+    empty_equipment_patterns = [
+        r"\bEMPTY\s+(?:CONTAINER|ISO\s*TANK|TANK|CNTR|REEFER|UNIT|EQUIPMENT)\b",
+        r"\b(?:CONTAINER|CNTR|TANK)\s+(?:STC\s+)?EMPTY\b",
+        r"\bMT\s+CONTAINER\b",
+        r"\bEMPTY\s+WITH\s+RESIDUE\b",
+        r"\bRESIDUE\s*\(SOC\)\b",
+        r"\bEMPTY\s+SOC\b"
     ]
-    return any(p in t for p in empty_patterns)
+    for pat in empty_equipment_patterns:
+        if re.search(pat, t):
+            return True
+    return False
 
 def parse_num(val_str: str) -> float:
     try:
@@ -242,18 +251,32 @@ def parse_num(val_str: str) -> float:
     except Exception:
         return 0.0
 
+def determine_carrier_agent(vessel_name: str, full_doc_text: str):
+    """Detects shipping line and agent accurately based on vessel and document headers."""
+    v = vessel_name.upper()
+    if "CMA CGM" in v:
+        return "CMA CGM", "CMA CGM GH. LTD."
+    if "GRIMALDI" in v or "GRANDE" in v:
+        return "GRIMALDI LINES", "GRIMALDI GH. LTD"
+    if "MSC" in v:
+        return "MEDITERRANEAN SHIPPING. CO", "MSC GH. LTD"
+    if "CAMEROUN EXPRESS" in v or "CARIBBEAN STAR" in v or "EOLIS" in full_doc_text:
+        return "AFRICA EXPRESS LINE", "EOLIS GH. LTD"
+    if "HAPAG" in v:
+        return "HAPAG-LLOYD", "HAPAG-LLOYD GH. LTD"
+    return "MAERSK LINE", "MAERSK GH. LTD."
+
 # ==========================================
-# 3. EXTRACTION ENGINES (SMART MULTI-CONTAINER AGGREGATION)
+# 3. EXTRACTION ENGINES
 # ==========================================
 
 def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
     """Extracts actual Cargo Gross Weight in MT, properly summing multiple containers."""
-    # Strip Tare weights completely
     cleaned = re.sub(r"Tare\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
 
-    # 1. Search for explicit OVERALL B/L Gross Weight statements
+    # 1. Search for explicit overall B/L Gross Weight
     explicit_totals = re.findall(
-        r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|GROSS\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT)",
+        r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|TOTAL\s+CARGO\s+GROSS\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT|MTS)",
         cleaned,
         re.IGNORECASE
     )
@@ -264,9 +287,9 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
         elif val > 0:
             return round(val, 2)
 
-    # 2. Look for the standalone B/L Gross Weight Column value (above freight charges)
+    # 2. Look for the standalone Gross Weight Column value
     col_totals = re.findall(
-        r"(?:^|\n)\s*([\d\.,]+)\s*KGS\s*\n\s*(?:Basic Ocean|Container Protect|Inland Haulage|Additional Import|Storage Export|Inspection Fee|Demurrage|Detention|Electronic Cargo|Terminal Handling|Port Additionals|Import Service|Documentation fee|Verified Gross Mass)",
+        r"(?:^|\n)\s*([\d\.,]+)\s*KGS\s*\n\s*(?:Basic Ocean|Container Protect|Inland Haulage|Additional Import|Storage Export|Inspection Fee|Demurrage|Detention|Electronic Cargo|Terminal Handling|Port Additionals|Import Service|Documentation fee|Verified Gross Mass|Rollable Compensation|3rd Party)",
         cleaned,
         re.IGNORECASE
     )
@@ -277,10 +300,9 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
         elif val > 0:
             return round(val, 2)
 
-    # 3. Collect individual container weights and SUM THEM TOGETHER if multiple containers exist
-    # Matches patterns like: "2600 CASES 28449.000 KGS" or "18 BALES 28030.000 KGS"
+    # 3. Collect individual container weights and SUM them if multiple exist
     item_matches = re.findall(
-        r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS)\s+([\d\s\.,]+)\s*KGS",
+        r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES)\s+([\d\s\.,]+)\s*KGS",
         cleaned,
         re.IGNORECASE
     )
@@ -288,23 +310,19 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
     if item_matches:
         container_weights = [parse_num(w) for w in item_matches if parse_num(w) > 500]
         if container_weights:
-            # If multiple containers and multiple weights, check if one is the sum or add them
             if cont_qty > 1 and len(container_weights) > 1:
                 max_w = max(container_weights)
                 others = [w for w in container_weights if w != max_w]
-                # If the largest is already the sum of others, use it
                 if others and abs(max_w - sum(others)) < 100.0:
                     return round(max_w / 1000.0, 2)
-                # Otherwise, sum individual container weights together
                 return round(sum(container_weights) / 1000.0, 2)
             else:
                 return round(max(container_weights) / 1000.0, 2)
 
-    # 4. Fallback: Find all numbers followed by KGS (Tare was already stripped)
+    # 4. Fallback: all numbers with KGS
     fallbacks = re.findall(r"([\d\.,]+)\s*KGS", cleaned, re.IGNORECASE)
     valid_nums = [parse_num(w) for w in fallbacks if parse_num(w) > 500]
     if valid_nums:
-        # If there are exactly cont_qty weights, sum them
         if cont_qty > 1 and len(valid_nums) == cont_qty:
             return round(sum(valid_nums) / 1000.0, 2)
         return round(max(valid_nums) / 1000.0, 2)
@@ -314,9 +332,12 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
 def parse_maersk(pdf_text: str, use_web_search: bool = False):
     rows = []
     ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)(?:Voyage|Page|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "BOSTON"
+    ship = ship_m.group(1).strip() if ship_m else "VESSEL"
 
-    bl_chunks = re.split(r"(?:\n|^)(?=[A-Z0-9]{7,12}\s*(?:\n| )*(?:MAEU|WAYBILL))", pdf_text)
+    carrier, agent = determine_carrier_agent(ship, pdf_text)
+
+    # Regex splits across multi-line or alphanumeric B/Ls cleanly
+    bl_chunks = re.split(r"(?:\n|^)\s*(?=[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL))", pdf_text)
     for chunk in bl_chunks:
         if not ("MAEU" in chunk or "WAYBILL" in chunk):
             continue
@@ -339,7 +360,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = False):
             cont_qty = int(cont_matches[0][0])
             cont_type = normalize_container(cont_matches[0][1])
 
-        # Automatically sums individual container weights if multiple exist
         tonnage = extract_maersk_gross_weight(chunk, cont_qty)
 
         hs_m = re.search(r"HS\s*(?:Code|CODE)?\s*[:\.]?\s*(\d{4,10})", chunk)
@@ -352,25 +372,25 @@ def parse_maersk(pdf_text: str, use_web_search: bool = False):
         if tonnage > 0:
             rows.append({
                 "SHIP": ship,
-                "SHIP LINE": "MAERSK LINE",
-                "AGENT": "MAERSK GH. LTD.",
+                "SHIP LINE": carrier,
+                "AGENT": agent,
                 "PORT": port_info[0],
                 "CTRY": port_info[1],
                 "RANGE": port_info[2],
                 "CONTYPE": cont_type,
                 "CONTQTY": cont_qty,
                 "COMMODITY": comm,
-                "TONNAGES": tonnage
+                "TONNAGES": f"{tonnage:.2f}"
             })
     return rows
 
 def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
-    """Parses CMA CGM manifests, grouping multi-page B/Ls and summing container weights."""
     rows = []
     ship_m = re.search(r"VESSEL:\s*([A-Z0-9\s]+?)\s*FLAG:", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip() if ship_m else "MAERSK HANGZHOU"
 
-    # Find all unique B/L blocks (e.g. TMA0161841B, TMA0161629E)
+    carrier, agent = determine_carrier_agent(ship, pdf_text)
+
     bl_matches = re.findall(r"\b(TMA[0-9A-Z]+)\b", pdf_text)
     unique_bls = []
     for b in bl_matches:
@@ -378,7 +398,6 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
             unique_bls.append(b)
 
     for bl_no in unique_bls:
-        # Extract all text sections belonging to this B/L
         bl_pattern = rf"(?:\n|^)\s*{bl_no}\b[\s\S]*?(?=(?:\n\s*TMA[0-9A-Z]+\b|\Z))"
         bl_full_text_list = re.findall(bl_pattern, pdf_text)
         bl_chunk = "\n".join(bl_full_text_list)
@@ -395,12 +414,10 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
                 port_info = v
                 break
 
-        # 1. Total Gross Weight: check for explicit B/L TOTAL
         total_m = re.findall(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", bl_chunk, re.IGNORECASE)
         if total_m:
             tonnage = float(total_m[-1])
         else:
-            # 2. Or SUM all individual container split weights (WGT: ... TNE)
             split_weights = re.findall(r"SPLIT\s*:\s*\d+[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", bl_chunk, re.IGNORECASE)
             if split_weights:
                 tonnage = sum([float(w) for w in split_weights])
@@ -408,7 +425,6 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
                 any_w = re.findall(r"WGT:\s*([\d\.]+)\s*TNE", bl_chunk, re.IGNORECASE)
                 tonnage = float(any_w[0]) if any_w else 0.0
 
-        # Container count & type
         splits = re.findall(r"SZTP:\s*([0-9A-Z]+)", bl_chunk)
         cont_qty = len(splits) if splits else 1
         cont_type = normalize_container(splits[0]) if splits else "40D"
@@ -421,15 +437,15 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
         if tonnage > 0:
             rows.append({
                 "SHIP": ship,
-                "SHIP LINE": "CMA CGM",
-                "AGENT": "CMA CGM GH. LTD.",
+                "SHIP LINE": carrier,
+                "AGENT": agent,
                 "PORT": port_info[0],
                 "CTRY": port_info[1],
                 "RANGE": port_info[2],
                 "CONTYPE": cont_type,
                 "CONTQTY": cont_qty,
                 "COMMODITY": comm,
-                "TONNAGES": round(tonnage, 2)
+                "TONNAGES": f"{tonnage:.2f}"
             })
     return rows
 
@@ -460,7 +476,6 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
             cont_qty = int(cont_m.group(1)) if cont_m else 1
             cont_type = "40R"
 
-        # Explicit overall B/L Gross Weight
         wgt_m = re.search(r"TOTAL GROSS WEIGHT\s*:\s*([\d\s\.,]+)\s*KG", chunk, re.IGNORECASE)
         tonnage = 0.0
         if wgt_m:
@@ -480,7 +495,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
                 "CONTYPE": cont_type,
                 "CONTQTY": cont_qty,
                 "COMMODITY": comm,
-                "TONNAGES": tonnage
+                "TONNAGES": f"{tonnage:.2f}"
             })
     return rows
 
@@ -535,7 +550,7 @@ if uploaded_files:
             pages_text = []
 
             for p_idx in range(total_pages):
-                status_text.text(f"Orienting & reading page {p_idx + 1} of {total_pages}...")
+                status_text.text(f"Reading & Orienting page {p_idx + 1} of {total_pages}...")
                 page = doc[p_idx]
                 if rotation_degrees != 0:
                     page.set_rotation(rotation_degrees)
@@ -556,10 +571,10 @@ if uploaded_files:
                 with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
                     st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
 
-            status_text.text("Aggregating Gross Weights across multiple containers...")
+            status_text.text("Processing B/L records and formatting Gross Weights...")
 
             parsed = []
-            if "MAERSK" in full_text and ("ML Export Manifest" in full_text or "MAEU" in full_text):
+            if "ML Export Manifest" in full_text or "MAEU" in full_text:
                 parsed = parse_maersk(full_text, enable_web_search)
             elif "CMA CGM" in full_text or "CMA\\CGM" in full_text:
                 parsed = parse_cmacgm(full_text, enable_web_search)
@@ -584,13 +599,22 @@ if uploaded_files:
             col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
             df = df[col_order]
 
-            st.success(f" Successfully processed {len(df)} B/L records with combined multi-container Gross Weights!")
+            st.success(f" Successfully processed {len(df)} B/L records with formatted Gross Weights!")
             st.subheader("Interactive Review Screen (Edit if needed)")
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                 edited_df.to_excel(writer, index=False, sheet_name="CODED MANIFEST")
+                ws = writer.sheets["CODED MANIFEST"]
+                tonnages_col_idx = col_order.index("TONNAGES") + 1
+                for r_idx in range(2, len(edited_df) + 2):
+                    cell = ws.cell(row=r_idx, column=tonnages_col_idx)
+                    try:
+                        cell.value = float(cell.value)
+                        cell.number_format = "0.00"
+                    except:
+                        pass
 
             st.download_button(
                 label="📥 Download Coded Excel Sheet (.xlsx)",
@@ -599,4 +623,4 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.error("No valid cargo rows were found. Tip: If the manifest is sideways, select '90° Clockwise' in orientation.")
+            st.error("No valid cargo rows were found. Tip: Check 'Show Raw Text Preview' to inspect the extracted text.")
