@@ -6,7 +6,6 @@ import pytesseract
 import re
 import io
 import requests
-from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 
 st.set_page_config(page_title="Ghana Export Manifest Auto-Coder", layout="wide")
@@ -39,236 +38,172 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. MASTER PORTS & COUNTRY KNOWLEDGE BASE
+# 1. COMPREHENSIVE GLOBAL COUNTRY & RANGE MAP
+# (Contains ALL 54 African countries + Global hubs)
 # ==========================================
 
-PORT_MAP = {
-    "LOME": ("LM", "TG", "AF"),
-    "COTONOU": ("CU", "BN", "AF"),
-    "ABIDJAN": ("AJ", "IV", "AF"),
-    "LAGOS": ("LG", "NG", "AF"),
-    "TINCAN": ("LG", "NG", "AF"),
-    "APAPA": ("OH", "NG", "AF"),
-    "ONNE": ("OH", "NG", "AF"),
-    "PORT HARCOURT": ("OH", "NG", "AF"),
-    "DAKAR": ("DA", "SN", "AF"),
-    "POINTE NOIRE": ("OH", "CG", "AF"),
-    "POINT NOIRE": ("OH", "CG", "AF"),
-    "MATADI": ("MA", "CG", "AF"),
-    "LIBREVILLE": ("LB", "GA", "AF"),
-    "PORT GENTIL": ("PG", "GA", "AF"),
-    "DOUALA": ("DL", "CM", "AF"),
-    "DURBAN": ("DR", "SA", "AF"),
-    "CAPETOWN": ("CN", "SA", "AF"),
-    "CAPE TOWN": ("CN", "SA", "AF"),
-    "PORT ELIZABETH": ("PE", "SA", "AF"),
-    "TEMA": ("TM", "GH", "AF"),
-    "TAKORADI": ("TD", "GH", "AF"),
-    "ANTWERP": ("AT", "BG", "CT"),
-    "AMSTERDAM": ("AM", "NL", "CT"),
-    "ROTTERDAM": ("RM", "NL", "CT"),
-    "HAMBURG": ("HM", "GR", "CT"),
-    "BREMERHAVEN": ("BM", "GR", "CT"),
-    "LE HAVRE": ("LH", "FR", "CT"),
-    "DUNKERQUE": ("DK", "FR", "CT"),
-    "DUNKIRK": ("DK", "FR", "CT"),
-    "PORT VENDRES": ("BD", "FR", "CT"),
-    "FOS SUR MER": ("OH", "FR", "CT"),
-    "MARSEILLE": ("MS", "FR", "CT"),
-    "ROUEN": ("RN", "FR", "CT"),
-    "GDYNIA": ("GA", "PL", "CT"),
-    "GDANSK": ("GK", "PL", "CT"),
-    "ZEEBRUGGE": ("ZB", "BG", "CT"),
-    "AARHUS": ("AH", "DK", "CT"),
-    "COPENHAGEN": ("CP", "DK", "CT"),
-    "TILBURY": ("TY", "UK", "UK"),
-    "LIVERPOOL": ("LV", "UK", "UK"),
-    "LONDON": ("LD", "UK", "UK"),
-    "FELIXSTOWE": ("FX", "UK", "UK"),
-    "TEESPORT": ("TE", "UK", "UK"),
-    "DUBLIN": ("DU", "IR", "UK"),
-    "BELFAST": ("BT", "IR", "UK"),
-    "BARCELONA": ("BC", "SP", "ME"),
-    "VALENCIA": ("VL", "SP", "ME"),
-    "ALGECIRAS": ("AR", "SP", "ME"),
-    "BILBAO": ("BI", "SP", "ME"),
-    "GENOA": ("GE", "IT", "ME"),
-    "LIVORNO": ("LO", "IT", "ME"),
-    "LEGHORN": ("LN", "IT", "ME"),
-    "NAPLES": ("NS", "IT", "ME"),
-    "SALERNO": ("SL", "IT", "ME"),
-    "ISTANBUL": ("IL", "TU", "ME"),
-    "AMBARLI": ("OH", "TU", "ME"),
-    "IZMIR": ("OH", "TU", "ME"),
-    "MERSIN": ("OH", "TU", "ME"),
-    "PIRAEUS": ("PI", "GC", "ME"),
-    "SHANGHAI": ("SH", "CH", "FE"),
-    "NINGBO": ("OH", "CH", "FE"),
-    "QINGDAO": ("OH", "CH", "FE"),
-    "SHEKOU": ("OH", "CH", "FE"),
-    "YANTIAN": ("OH", "CH", "FE"),
-    "HONGKONG": ("HK", "HK", "FE"),
-    "BUSAN": ("BU", "SK", "FE"),
-    "PUSAN": ("BU", "SK", "FE"),
-    "INCHEON": ("OH", "SK", "FE"),
-    "SINGAPORE": ("SG", "SG", "FE"),
-    "PORT KLANG": ("OH", "MY", "FE"),
-    "TANJUNG PELEPAS": ("OH", "MY", "FE"),
-    "PENANG": ("PM", "MY", "FE"),
-    "HO CHI MINH": ("OH", "VT", "FE"),
-    "HAIPHONG": ("OH", "VT", "FE"),
-    "MUMBAI": ("BY", "IN", "FE"),
-    "NHAVA SHEVA": ("OH", "IN", "FE"),
-    "MUNDRA": ("OH", "IN", "FE"),
-    "CHENNAI": ("MD", "IN", "FE"),
-    "YOKOHAMA": ("YK", "JP", "FE"),
-    "TOKYO": ("TK", "JP", "FE"),
-    "KOBE": ("KB", "JP", "FE"),
-    "NEW YORK": ("NY", "US", "NA"),
-    "SAVANNAH": ("SV", "US", "NA"),
-    "HOUSTON": ("HO", "US", "NA"),
-    "BALTIMORE": ("BE", "US", "NA"),
-    "NORFOLK": ("NF", "US", "NA"),
-    "NEW ORLEANS": ("NO", "US", "NA"),
-    "MONTREAL": ("MT", "CN", "NA"),
-    "SANTOS": ("ST", "BZ", "OH"),
-    "BUENOS AIRES": ("BO", "AR", "OH"),
-}
-
-# Country code and range lookup for unlisted/fallback ports
 COUNTRY_MAP = {
-    "TURKEY": ("TU", "ME"),
-    "TURKIYE": ("TU", "ME"),
-    "NIGERIA": ("NG", "AF"),
-    "TOGO": ("TG", "AF"),
-    "BENIN": ("BN", "AF"),
-    "GHANA": ("GH", "AF"),
-    "IVORY COAST": ("IV", "AF"),
-    "COTE D'IVOIRE": ("IV", "AF"),
-    "BURKINA FASO": ("BF", "AF"),
-    "NIGER": ("NR", "AF"),
-    "MALI": ("ML", "AF"),
-    "SENEGAL": ("SN", "AF"),
-    "SOUTH AFRICA": ("SA", "AF"),
-    "CAMEROON": ("CM", "AF"),
-    "CONGO": ("CG", "AF"),
-    "GABON": ("GA", "AF"),
-    "GUINEA": ("GN", "AF"),
-    "SIERRA LEONE": ("SL", "AF"),
-    "LIBERIA": ("LB", "AF"),
-    "MAURITANIA": ("MR", "AF"),
-    "EGYPT": ("EY", "AF"),
-    "MOROCCO": ("MC", "AF"),
-    "ALGERIA": ("AG", "AF"),
-    "TUNISIA": ("TS", "AF"),
-    "UNITED KINGDOM": ("UK", "UK"),
-    "UK": ("UK", "UK"),
-    "ENGLAND": ("UK", "UK"),
-    "SCOTLAND": ("UK", "UK"),
-    "IRELAND": ("IR", "UK"),
-    "NETHERLANDS": ("NL", "CT"),
-    "HOLLAND": ("NL", "CT"),
-    "BELGIUM": ("BG", "CT"),
-    "GERMANY": ("GR", "CT"),
-    "FRANCE": ("FR", "CT"),
-    "POLAND": ("PL", "CT"),
-    "DENMARK": ("DK", "CT"),
-    "SWEDEN": ("SE", "CT"),
-    "NORWAY": ("NW", "CT"),
-    "FINLAND": ("FL", "CT"),
-    "ESTONIA": ("ET", "CT"),
-    "LATVIA": ("LV", "CT"),
-    "LITHUANIA": ("LT", "CT"),
-    "UKRAINE": ("UE", "CT"),
-    "RUSSIA": ("RU", "CT"),
-    "SPAIN": ("SP", "ME"),
-    "ITALY": ("IT", "ME"),
-    "GREECE": ("GC", "ME"),
-    "PORTUGAL": ("PG", "ME"),
-    "CYPRUS": ("CY", "ME"),
-    "ROMANIA": ("RM", "ME"),
-    "BULGARIA": ("BG", "CT"),
-    "INDIA": ("IN", "FE"),
-    "CHINA": ("CH", "FE"),
-    "JAPAN": ("JP", "FE"),
-    "SOUTH KOREA": ("SK", "FE"),
-    "KOREA": ("SK", "FE"),
-    "VIETNAM": ("VT", "FE"),
-    "MALAYSIA": ("MY", "FE"),
-    "INDONESIA": ("ID", "FE"),
-    "THAILAND": ("TH", "FE"),
-    "SINGAPORE": ("SG", "FE"),
-    "TAIWAN": ("TW", "FE"),
-    "HONG KONG": ("HK", "FE"),
-    "HONGKONG": ("HK", "FE"),
-    "PAKISTAN": ("PK", "FE"),
-    "UNITED STATES": ("US", "NA"),
-    "USA": ("US", "NA"),
-    "CANADA": ("CN", "NA"),
-    "BRAZIL": ("BZ", "OH"),
-    "ARGENTINA": ("AR", "OH"),
-    "AUSTRALIA": ("AU", "OH"),
-    "NEW ZEALAND": ("NZ", "OH"),
-    "UNITED ARAB EMIRATES": ("AE", "OH"),
-    "UAE": ("AE", "OH"),
-    "DUBAI": ("AE", "OH"),
-    "SAUDI ARABIA": ("SB", "OH"),
-    "JORDAN": ("JD", "OH"),
-    "ISRAEL": ("IL", "OH"),
+    # --- AFRICA (RANGE: AF) ---
+    "NIGERIA": ("NG", "AF"), "TOGO": ("TG", "AF"), "BENIN": ("BN", "AF"),
+    "GHANA": ("GH", "AF"), "COTE D'IVOIRE": ("IV", "AF"), "IVORY COAST": ("IV", "AF"),
+    "BURKINA FASO": ("BF", "AF"), "NIGER": ("NR", "AF"), "MALI": ("ML", "AF"),
+    "SENEGAL": ("SN", "AF"), "SOUTH AFRICA": ("SA", "AF"), "CAMEROON": ("CM", "AF"),
+    "CONGO": ("CG", "AF"), "DEMOCRATIC REPUBLIC OF THE CONGO": ("CG", "AF"),
+    "GABON": ("GA", "AF"), "GUINEA": ("GN", "AF"), "EQUATORIAL GUINEA": ("OH", "AF"),
+    "SIERRA LEONE": ("SL", "AF"), "LIBERIA": ("LB", "AF"), "MAURITANIA": ("MR", "AF"),
+    "EGYPT": ("EY", "AF"), "MOROCCO": ("MC", "AF"), "ALGERIA": ("AG", "AF"),
+    "TUNISIA": ("TS", "AF"), "LIBYA": ("LY", "AF"), "TANZANIA": ("TZ", "AF"),
+    "KENYA": ("KY", "AF"), "ANGOLA": ("OH", "AF"), "MOZAMBIQUE": ("MZ", "AF"),
+    "NAMIBIA": ("OH", "AF"), "MADAGASCAR": ("OH", "AF"), "GAMBIA": ("GM", "AF"),
+    "GUINEA-BISSAU": ("GW", "AF"), "CHAD": ("CD", "AF"), "SUDAN": ("SD", "AF"),
+    "ETHIOPIA": ("ET", "AF"), "SOMALIA": ("SO", "AF"), "DJIBOUTI": ("DJ", "AF"),
+    "UGANDA": ("UG", "AF"), "RWANDA": ("RW", "AF"), "BURUNDI": ("BI", "AF"),
+    "ZAMBIA": ("ZM", "AF"), "ZIMBABWE": ("ZM", "AF"), "MALAWI": ("MW", "AF"),
+    "BOTSWANA": ("BW", "AF"), "LESOTHO": ("LS", "AF"), "ESWATINI": ("SZ", "AF"),
+    "CAPE VERDE": ("CV", "AF"), "MAURITIUS": ("MU", "AF"), "SEYCHELLES": ("SC", "AF"),
+
+    # --- UNITED KINGDOM & IRELAND (RANGE: UK) ---
+    "UNITED KINGDOM": ("UK", "UK"), "UK": ("UK", "UK"), "ENGLAND": ("UK", "UK"),
+    "SCOTLAND": ("UK", "UK"), "WALES": ("UK", "UK"), "IRELAND": ("IR", "UK"),
+
+    # --- CONTINENT EUROPE (RANGE: CT) ---
+    "NETHERLANDS": ("NL", "CT"), "HOLLAND": ("NL", "CT"), "BELGIUM": ("BG", "CT"),
+    "GERMANY": ("GR", "CT"), "FRANCE": ("FR", "CT"), "POLAND": ("PL", "CT"),
+    "DENMARK": ("DK", "CT"), "SWEDEN": ("SE", "CT"), "NORWAY": ("NW", "CT"),
+    "FINLAND": ("FL", "CT"), "ESTONIA": ("ET", "CT"), "LATVIA": ("LV", "CT"),
+    "LITHUANIA": ("LT", "CT"), "UKRAINE": ("UE", "CT"), "RUSSIA": ("RU", "CT"),
+    "CZECH REPUBLIC": ("CZ", "CT"), "CZECHIA": ("CZ", "CT"), "SLOVAKIA": ("SK", "CT"),
+    "AUSTRIA": ("AT", "CT"), "SWITZERLAND": ("CH", "CT"), "HUNGARY": ("HU", "CT"),
+    "BELARUS": ("BY", "CT"),
+
+    # --- MEDITERRANEAN (RANGE: ME) ---
+    "SPAIN": ("SP", "ME"), "ITALY": ("IT", "ME"), "GREECE": ("GC", "ME"),
+    "PORTUGAL": ("PG", "ME"), "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"),
+    "CYPRUS": ("CY", "ME"), "ROMANIA": ("RM", "ME"), "BULGARIA": ("BU", "ME"),
+    "CROATIA": ("HR", "ME"), "SLOVENIA": ("SI", "ME"), "MALTA": ("MT", "ME"),
+    "ALBANIA": ("AL", "ME"), "CANARY ISLANDS": ("CI", "ME"),
+
+    # --- FAR EAST & ASIA (RANGE: FE) ---
+    "INDIA": ("IN", "FE"), "CHINA": ("CH", "FE"), "JAPAN": ("JP", "FE"),
+    "SOUTH KOREA": ("SK", "FE"), "KOREA": ("SK", "FE"), "VIETNAM": ("VT", "FE"),
+    "MALAYSIA": ("MY", "FE"), "INDONESIA": ("ID", "FE"), "THAILAND": ("TH", "FE"),
+    "SINGAPORE": ("SG", "FE"), "TAIWAN": ("TW", "FE"), "HONG KONG": ("HK", "FE"),
+    "HONGKONG": ("HK", "FE"), "PAKISTAN": ("PK", "FE"), "BANGLADESH": ("BD", "FE"),
+    "SRI LANKA": ("SR", "FE"), "PHILIPPINES": ("PH", "FE"),
+
+    # --- NORTH AMERICA (RANGE: NA) ---
+    "UNITED STATES": ("US", "NA"), "USA": ("US", "NA"), "CANADA": ("CN", "NA"),
+
+    # --- OTHER / SOUTH AMERICA / OCEANIA / MIDDLE EAST (RANGE: OH) ---
+    "BRAZIL": ("BZ", "OH"), "ARGENTINA": ("AR", "OH"), "CHILE": ("CL", "OH"),
+    "PERU": ("PU", "OH"), "COLOMBIA": ("CO", "OH"), "ECUADOR": ("EC", "OH"),
+    "AUSTRALIA": ("AU", "OH"), "NEW ZEALAND": ("NZ", "OH"),
+    "UNITED ARAB EMIRATES": ("AE", "OH"), "UAE": ("AE", "OH"), "DUBAI": ("AE", "OH"),
+    "SAUDI ARABIA": ("SB", "OH"), "QATAR": ("OH", "OH"), "OMAN": ("OM", "OH"),
+    "KUWAIT": ("KU", "OH"), "BAHRAIN": ("OH", "OH"), "JORDAN": ("JD", "OH"),
+    "ISRAEL": ("IL", "OH"), "LEBANON": ("LN", "OH")
+}
+
+# Major designated ports from code sheet
+PORT_MAP = {
+    "LOME": ("LM", "TG", "AF"), "COTONOU": ("CU", "BN", "AF"), "ABIDJAN": ("AJ", "IV", "AF"),
+    "LAGOS": ("LG", "NG", "AF"), "TINCAN": ("LG", "NG", "AF"), "APAPA": ("OH", "NG", "AF"),
+    "ONNE": ("OH", "NG", "AF"), "PORT HARCOURT": ("OH", "NG", "AF"), "DAKAR": ("DA", "SN", "AF"),
+    "POINTE NOIRE": ("OH", "CG", "AF"), "POINT NOIRE": ("OH", "CG", "AF"), "MATADI": ("MA", "CG", "AF"),
+    "LIBREVILLE": ("LB", "GA", "AF"), "PORT GENTIL": ("PG", "GA", "AF"), "DOUALA": ("DL", "CM", "AF"),
+    "DURBAN": ("DR", "SA", "AF"), "CAPETOWN": ("CN", "SA", "AF"), "CAPE TOWN": ("CN", "SA", "AF"),
+    "PORT ELIZABETH": ("PE", "SA", "AF"), "TEMA": ("TM", "GH", "AF"), "TAKORADI": ("TD", "GH", "AF"),
+    "ANTWERP": ("AT", "BG", "CT"), "AMSTERDAM": ("AM", "NL", "CT"), "ROTTERDAM": ("RM", "NL", "CT"),
+    "HAMBURG": ("HM", "GR", "CT"), "BREMERHAVEN": ("BM", "GR", "CT"), "LE HAVRE": ("LH", "FR", "CT"),
+    "DUNKERQUE": ("DK", "FR", "CT"), "DUNKIRK": ("DK", "FR", "CT"), "PORT VENDRES": ("BD", "FR", "CT"),
+    "FOS SUR MER": ("OH", "FR", "CT"), "MARSEILLE": ("MS", "FR", "CT"), "ROUEN": ("RN", "FR", "CT"),
+    "GDYNIA": ("GA", "PL", "CT"), "GDANSK": ("GK", "PL", "CT"), "ZEEBRUGGE": ("ZB", "BG", "CT"),
+    "AARHUS": ("AH", "DK", "CT"), "COPENHAGEN": ("CP", "DK", "CT"), "TILBURY": ("TY", "UK", "UK"),
+    "LIVERPOOL": ("LV", "UK", "UK"), "LONDON": ("LD", "UK", "UK"), "FELIXSTOWE": ("FX", "UK", "UK"),
+    "TEESPORT": ("TE", "UK", "UK"), "DUBLIN": ("DU", "IR", "UK"), "BELFAST": ("BT", "IR", "UK"),
+    "BARCELONA": ("BC", "SP", "ME"), "VALENCIA": ("VL", "SP", "ME"), "ALGECIRAS": ("AR", "SP", "ME"),
+    "BILBAO": ("BI", "SP", "ME"), "GENOA": ("GE", "IT", "ME"), "LIVORNO": ("LO", "IT", "ME"),
+    "LEGHORN": ("LN", "IT", "ME"), "NAPLES": ("NS", "IT", "ME"), "SALERNO": ("SL", "IT", "ME"),
+    "ISTANBUL": ("IL", "TU", "ME"), "IZMIT": ("OH", "TU", "ME"), "AMBARLI": ("OH", "TU", "ME"),
+    "PIRAEUS": ("PI", "GC", "ME"), "SHANGHAI": ("SH", "CH", "FE"), "NINGBO": ("OH", "CH", "FE"),
+    "QINGDAO": ("OH", "CH", "FE"), "SHEKOU": ("OH", "CH", "FE"), "YANTIAN": ("OH", "CH", "FE"),
+    "HONGKONG": ("HK", "HK", "FE"), "BUSAN": ("BU", "SK", "FE"), "PUSAN": ("BU", "SK", "FE"),
+    "INCHEON": ("OH", "SK", "FE"), "SINGAPORE": ("SG", "SG", "FE"), "PORT KLANG": ("OH", "MY", "FE"),
+    "TANJUNG PELEPAS": ("OH", "MY", "FE"), "PENANG": ("PM", "MY", "FE"), "HO CHI MINH": ("OH", "VT", "FE"),
+    "HAIPHONG": ("OH", "VT", "FE"), "MUMBAI": ("BY", "IN", "FE"), "NHAVA SHEVA": ("OH", "IN", "FE"),
+    "MUNDRA": ("OH", "IN", "FE"), "CHENNAI": ("MD", "IN", "FE"), "YOKOHAMA": ("YK", "JP", "FE"),
+    "TOKYO": ("TK", "JP", "FE"), "KOBE": ("KB", "JP", "FE"), "NEW YORK": ("NY", "US", "NA"),
+    "SAVANNAH": ("SV", "US", "NA"), "HOUSTON": ("HO", "US", "NA"), "BALTIMORE": ("BE", "US", "NA"),
+    "NORFOLK": ("NF", "US", "NA"), "NEW ORLEANS": ("NO", "US", "NA"), "MONTREAL": ("MT", "CN", "NA"),
+    "SANTOS": ("ST", "BZ", "OH"), "BUENOS AIRES": ("BO", "AR", "OH"),
 }
 
 # ==========================================
-# 2. WEB SEARCH HYPER-INTELLIGENCE
+# 2. FAST CACHED WEB LOOKUP (NON-BLOCKING)
 # ==========================================
 
-def search_web(query: str) -> str:
-    """Executes a search query and returns the summary text."""
+SEARCH_CACHE = {}
+
+def fast_web_lookup(term: str) -> str:
+    clean_term = term.strip().upper()
+    if clean_term in SEARCH_CACHE:
+        return SEARCH_CACHE[clean_term]
+        
     try:
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=4)
+        url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote_plus(clean_term)}&utf8=&format=json"
+        headers = {"User-Agent": "GhanaManifestCoderBot/1.0"}
+        resp = requests.get(url, headers=headers, timeout=1.5)
         if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            snippets = [s.get_text() for s in soup.find_all("a", class_="result__snippet")[:3]]
-            return " ".join(snippets).upper()
+            data = resp.json()
+            snippets = [item.get("snippet", "") for item in data.get("query", {}).get("search", [])[:2]]
+            res_text = re.sub(r"<[^>]+>", " ", " ".join(snippets)).upper()
+            SEARCH_CACHE[clean_term] = res_text
+            return res_text
     except Exception:
         pass
+        
+    SEARCH_CACHE[clean_term] = ""
     return ""
 
-def resolve_port_info(pod_raw: str, use_web_search: bool = True) -> tuple:
-    """Resolves Port, Country, and Range, using web search for unlisted ports."""
+def resolve_port_info(pod_raw: str, full_b_l_text: str = "", use_web_search: bool = True) -> tuple:
+    """Dynamically resolves ANY port in the world into (PORT, CTRY, RANGE)."""
     clean_pod = pod_raw.upper().strip()
 
-    # Step 1: Direct match in PORT_MAP
+    # Tier 1: Exact match in designated PORT_MAP
     for k, v in PORT_MAP.items():
         if k in clean_pod:
             return v
 
-    # Step 2: Check if country name is already in the POD text (e.g., "Izmit, Turkey")
+    # Tier 2: Country scan in the POD text line (e.g. "Izmit, Turkey", "San Pedro, Ivory Coast")
     for c_name, (c_code, r_code) in COUNTRY_MAP.items():
         if c_name in clean_pod:
             return ("OH", c_code, r_code)
 
-    # Step 3: Web Search Hyper-Intelligence for Unlisted Port
+    # Tier 3: Scan the whole B/L (e.g. Consignee / Delivery address block)
+    if full_b_l_text:
+        upper_chunk = full_b_l_text.upper()
+        for c_name, (c_code, r_code) in COUNTRY_MAP.items():
+            if f", {c_name}" in upper_chunk or f"\n{c_name}" in upper_chunk:
+                return ("OH", c_code, r_code)
+
+    # Tier 4: Fast Web Geocoder (Wikipedia lookup)
     if use_web_search and len(clean_pod) > 2:
-        # Search query for the seaport
-        query = f"{clean_pod} seaport port which country"
-        search_result = search_web(query)
-        if search_result:
+        res = fast_web_lookup(f"{clean_pod} seaport port city country")
+        if res:
+            # Check if any country in our global database is mentioned
             for c_name, (c_code, r_code) in COUNTRY_MAP.items():
-                if c_name in search_result:
+                if c_name in res:
                     return ("OH", c_code, r_code)
+            # Check if Africa is explicitly stated
+            if "AFRICA" in res:
+                return ("OH", "OH", "AF")
+            if "EUROPE" in res:
+                return ("OH", "OH", "CT")
+            if "ASIA" in res:
+                return ("OH", "OH", "FE")
 
-    # Fallback default
+    # Final Default Fallback
     return ("OH", "OH", "AF")
-
-def search_web_for_commodity(query_text: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z\s]", " ", query_text)
-    words = [w for w in cleaned.split() if len(w) > 3 and w.upper() not in ["CARTON", "BAGS", "PACKAGE", "CONTAINER", "WEIGHT", "GROSS", "NET"]][:4]
-    search_term = " ".join(words)
-    if not search_term.strip():
-        return ""
-    return search_web(f"{search_term} product what is")
 
 def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = False) -> str:
     t = (desc + " " + hs_code).upper()
@@ -288,11 +223,13 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LCA"
         if any(k in text_to_check for k in ["SHEA NUT", "SHEANUT", "KARITE"]):
             return "LSH"
+        if any(k in text_to_check for k in ["TOBACCO", "GINGER", "CHILLI", "TURMERIC", "SESAME", "SEEDS", "COCONUT", "COIR", "COCOPEAT", "PEPPER", "CASHEW SHELL", "CHARCOAL"]) or hs_code.startswith(("0904", "0910", "1207", "2401", "5305")):
+            return "LNO"
         if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO", "PRAWNS", "SEAFOOD"]) or hs_code.startswith(("0207", "0303", "0306", "0201", "0202")):
             return "LFI"
         if "CANNED TUNA" in text_to_check or "CANNED FISH" in text_to_check:
             return "LFS"
-        if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS", "ROUGH SQUARE LOGS", "ROUGH SQUARES", "TEAK ROUGH"]):
+        if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS", "ROUGH SQUARE LOGS", "ROUGH SQUARES", "TEAK ROUGH"]) or (hs_code.startswith("4403") and "SAWN" not in text_to_check):
             return "LLG"
         if any(k in text_to_check for k in ["LUMBER", "SAWN TIMBER", "TEAK SAWN", "TEAK IN CONTAINER"]) or hs_code.startswith("4407"):
             return "LST"
@@ -308,11 +245,11 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LVE"
         if any(k in text_to_check for k in ["TRUCK", "FORKLIFT", "TRACTOR"]) or hs_code.startswith("8704"):
             return "LTR"
-        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "MOULDS", "LATHE"]) or hs_code.startswith(("84", "85")):
+        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "MOULDS", "LATHE", "INCENSE"]) or hs_code.startswith(("84", "85", "3307")):
             return "LME"
-        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE"]) or hs_code.startswith(("2501", "2520", "28", "29", "38", "3901")):
+        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE", "MANGANESE"]) or hs_code.startswith(("2501", "2520", "28", "29", "38", "3901", "7202")):
             return "LCH"
-        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR", "RICE", "PARBOILED RICE", "TOBACCO", "TEA", "MEDICINE", "PHARMACEUTICAL", "SESAME"]):
+        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "BEVERAGE", "VODKA", "SOAP", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR", "RICE", "PARBOILED RICE", "TEA", "MEDICINE", "PHARMACEUTICAL", "TAILORING", "POPPADOM", "FILTERATION", "YARN", "FABRIC", "PAPERBOARD", "FOOTWEAR"]) or hs_code.startswith(("1006", "1107", "1902", "1905", "2106", "3004", "4810", "5208", "5407", "5603", "5911", "6108", "6109", "6203", "6204", "6304", "6309", "6402")):
             return "LPE"
         return None
 
@@ -321,11 +258,13 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         return result
 
     if use_web_search and len(desc.strip()) > 3:
-        web_info = search_web_for_commodity(desc)
-        if web_info:
-            searched_result = match_rules(web_info)
-            if searched_result:
-                return searched_result
+        cleaned_words = [w for w in re.sub(r"[^A-Za-z]", " ", desc).split() if len(w) > 3][:3]
+        if cleaned_words:
+            web_info = fast_web_lookup(" ".join(cleaned_words) + " product")
+            if web_info:
+                res = match_rules(web_info)
+                if res:
+                    return res
 
     return "LGC"
 
@@ -409,7 +348,7 @@ def extract_maersk_gross_weight(chunk: str, cont_qty: int) -> float:
             return round(val, 2)
 
     item_matches = re.findall(
-        r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES)\s+([\d\s\.,]+)\s*KGS",
+        r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES|ROLLS)\s+([\d\s\.,]+)\s*KGS",
         cleaned,
         re.IGNORECASE
     )
@@ -452,8 +391,8 @@ def parse_maersk(pdf_text: str, use_web_search: bool = False):
         pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del):\s*([^,\n]+(?:,[^,\n]+)?)", chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
 
-        # Resolves Port, Country, Range with Web Search for unlisted ports
-        port_info = resolve_port_info(pod_raw, use_web_search)
+        # 4-tier dynamic port & country resolver
+        port_info = resolve_port_info(pod_raw, chunk, use_web_search)
 
         cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)[^\n]*)", chunk, re.IGNORECASE)
         cont_type = "40D"
@@ -510,7 +449,7 @@ def parse_cmacgm(pdf_text: str, use_web_search: bool = False):
         pod_m = re.search(r"Final Port of Discharge\s*([^\n]+)", bl_chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else ""
 
-        port_info = resolve_port_info(pod_raw, use_web_search)
+        port_info = resolve_port_info(pod_raw, bl_chunk, use_web_search)
 
         total_m = re.findall(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", bl_chunk, re.IGNORECASE)
         if total_m:
@@ -560,7 +499,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
         pod_m = re.search(r"Port of Discharge:\s*([^\n]+)", pdf_text, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "PORT VENDRES"
 
-        port_info = resolve_port_info(pod_raw, use_web_search)
+        port_info = resolve_port_info(pod_raw, chunk, use_web_search)
 
         is_breakbulk = "PALLETS IN HOLD" in chunk.upper()
         cont_type = ""
@@ -598,7 +537,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = False):
 # ==========================================
 
 st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Automated coding engine with OCR, Port/Commodity Web Search, and Gross Weight Aggregation.")
+st.markdown("Automated coding engine with OCR, Dynamic Global Port Geocoding, and Gross Weight Aggregation.")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -643,14 +582,22 @@ if uploaded_files:
             total_pages = len(doc)
             pages_text = []
 
+            # 1. Quick pass: check if document has digital text
+            status_text.text(f"Scanning document structure ({uploaded_file.name})...")
+            has_digital_text = False
+            for p in doc[:3]:
+                if len(p.get_text("text").strip()) > 50:
+                    has_digital_text = True
+                    break
+
             for p_idx in range(total_pages):
-                status_text.text(f"Reading & Orienting page {p_idx + 1} of {total_pages}...")
+                status_text.text(f"Reading page {p_idx + 1} of {total_pages}...")
                 page = doc[p_idx]
                 if rotation_degrees != 0:
                     page.set_rotation(rotation_degrees)
                 
                 txt = page.get_text("text")
-                if len(txt.strip()) < 40:
+                if not has_digital_text and len(txt.strip()) < 30:
                     pix = page.get_pixmap(dpi=150)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                     try:
