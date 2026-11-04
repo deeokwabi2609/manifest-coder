@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
-import pdfplumber
+import fitz  # PyMuPDF
+from PIL import Image
+import pytesseract
 import re
 import io
 
 st.set_page_config(page_title="Ghana Export Manifest Auto-Coder", layout="wide")
 
 # ==========================================
-# 0. SECURITY & PASSWORD GATE
+# 0. SECURITY GATE
 # ==========================================
 
 def check_password():
-    """Returns True if the user entered the correct password."""
     def password_entered():
         if st.session_state["password"] == "GsaMeta@123":
             st.session_state["password_correct"] = True
@@ -33,12 +34,6 @@ def check_password():
 
 if not check_password():
     st.stop()
-
-def is_valid_pdf(file_obj) -> bool:
-    file_obj.seek(0)
-    header = file_obj.read(5)
-    file_obj.seek(0)
-    return header == b'%PDF-'
 
 # ==========================================
 # 1. MASTER DICTIONARIES & KNOWLEDGE BASE
@@ -182,7 +177,7 @@ def classify_commodity(desc: str, hs_code: str = "") -> str:
 
 def normalize_container(sz_text: str):
     sz = str(sz_text).upper()
-    if any(k in sz for k in ["REEF", "40RH", "40RA", "40RC", "45R", "40R"]):
+    if any(k in sz for k in ["REEF", "40RH", "40RA", "40RC", "45R", "40R", "40HR"]):
         return "40R"
     if any(k in sz for k in ["20R", "20RF"]):
         return "20R"
@@ -201,39 +196,60 @@ def is_empty_equipment(text: str) -> bool:
     return any(p in t for p in empty_patterns)
 
 # ==========================================
-# 2. CARRIER PARSERS
+# 2. ROBUST EXTRACTION & OCR ENGINE
+# ==========================================
+
+def extract_page_text_with_ocr(page, user_rot: int, enable_ocr: bool):
+    """Extracts text, handling rotation and OCR for image-only scans."""
+    if user_rot != 0:
+        page.set_rotation(user_rot)
+
+    text = page.get_text("text")
+
+    # If digital text is missing or extremely short, trigger OCR
+    if len(text.strip()) < 40 and enable_ocr:
+        pix = page.get_pixmap(dpi=150)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        try:
+            text = pytesseract.image_to_string(img)
+        except Exception:
+            pass  # Fallback if tesseract binary is warming up
+
+    return text
+
+# ==========================================
+# 3. CARRIER PARSERS
 # ==========================================
 
 def parse_maersk(pdf_text: str):
     rows = []
-    ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)\s*Page", pdf_text)
+    ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)(?:Voyage|Page|\n)", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip() if ship_m else "BOSTON"
-    
-    # Matches any 8-12 alphanumeric B/L number followed by MAEU
-    bl_chunks = re.split(r"(?:\n|^)(?=[A-Z0-9]{7,12}\s*\n?MAEU)", pdf_text)
+
+    bl_chunks = re.split(r"(?:\n|^)(?=[A-Z0-9]{7,12}\s*(?:\n| )*(?:MAEU|WAYBILL))", pdf_text)
     for chunk in bl_chunks:
-        if "MAEU" not in chunk:
+        if not ("MAEU" in chunk or "WAYBILL" in chunk):
             continue
         if is_empty_equipment(chunk):
-            continue  # Skip empty containers
-            
-        pod_m = re.search(r"(?:Final Disch|Vessel Disch):\s*([^,\n]+)", chunk)
+            continue
+
+        pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del):\s*([^,\n]+)", chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
-        
+
         port_info = ("OH", "OH", "AF")
         for k, v in PORT_MAP.items():
             if k in pod_raw:
                 port_info = v
                 break
-                
-        cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC)[^\n]*)", chunk, re.IGNORECASE)
+
+        cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)[^\n]*)", chunk, re.IGNORECASE)
         cont_type = "40D"
         cont_qty = 1
         if cont_matches:
             cont_qty = int(cont_matches[0][0])
             cont_type = normalize_container(cont_matches[0][1])
-            
-        wgt_m = re.search(r"([\d\.,\s]+)\s*KGS", chunk)
+
+        wgt_m = re.search(r"([\d\.,\s]+)\s*KGS", chunk, re.IGNORECASE)
         tonnage = 0.0
         if wgt_m:
             raw_w = wgt_m.group(1).replace(" ", "").replace(",", "")
@@ -241,14 +257,14 @@ def parse_maersk(pdf_text: str):
                 tonnage = round(float(raw_w) / 1000.0, 2)
             except:
                 tonnage = 0.0
-                
+
         hs_m = re.search(r"HS\s*(?:Code|CODE)?\s*[:\.]?\s*(\d{4,10})", chunk)
         hs = hs_m.group(1) if hs_m else ""
-        desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n[A-Z0-9]{7,12}|$)", chunk)
+        desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n[A-Z0-9]{7,12}|$)", chunk, re.IGNORECASE)
         desc = desc_m.group(1).strip() if desc_m else ""
-        
+
         comm = classify_commodity(desc, hs)
-        
+
         if tonnage > 0:
             rows.append({
                 "SHIP": ship,
@@ -266,37 +282,37 @@ def parse_maersk(pdf_text: str):
 
 def parse_cmacgm(pdf_text: str):
     rows = []
-    ship_m = re.search(r"VESSEL:\s*([A-Z0-9\s]+?)\s*FLAG:", pdf_text)
+    ship_m = re.search(r"VESSEL:\s*([A-Z0-9\s]+?)\s*FLAG:", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip() if ship_m else "MAERSK HANGZHOU"
-    
+
     bl_chunks = re.split(r"(?:\n|^)(?=TMA\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
         if is_empty_equipment(chunk):
             continue
-            
-        pod_m = re.search(r"Final Port of Discharge\s*([^\n]+)", chunk)
+
+        pod_m = re.search(r"Final Port of Discharge\s*([^\n]+)", chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else ""
-        
+
         port_info = ("OH", "OH", "AF")
         for k, v in PORT_MAP.items():
             if k in pod_raw:
                 port_info = v
                 break
-                
-        wgt_m = re.search(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", chunk)
+
+        wgt_m = re.search(r"B/L TOTAL[\s\S]*?WGT:\s*([\d\.]+)\s*TNE", chunk, re.IGNORECASE)
         if not wgt_m:
-            wgt_m = re.search(r"WGT:\s*([\d\.]+)\s*TNE", chunk)
+            wgt_m = re.search(r"WGT:\s*([\d\.]+)\s*TNE", chunk, re.IGNORECASE)
         tonnage = float(wgt_m.group(1)) if wgt_m else 0.0
-        
+
         splits = re.findall(r"SZTP:\s*([0-9A-Z]+)", chunk)
         cont_qty = len(splits) if splits else 1
         cont_type = normalize_container(splits[0]) if splits else "40D"
-        
-        desc_m = re.search(r"DESCRIPTION\s*([\s\S]+?)(?:FREIGHT|B/L TOTAL|SPLIT)", chunk)
+
+        desc_m = re.search(r"DESCRIPTION\s*([\s\S]+?)(?:FREIGHT|B/L TOTAL|SPLIT)", chunk, re.IGNORECASE)
         desc = desc_m.group(1).strip() if desc_m else ""
-        
+
         comm = classify_commodity(desc)
-        
+
         if tonnage > 0:
             rows.append({
                 "SHIP": ship,
@@ -314,23 +330,23 @@ def parse_cmacgm(pdf_text: str):
 
 def parse_ael(pdf_text: str):
     rows = []
-    ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text)
+    ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip().upper() if ship_m else "CAMEROUN EXPRESS"
-    
+
     bl_chunks = re.split(r"(?:\n|^)(?=TEMPOV\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
         if is_empty_equipment(chunk):
             continue
-            
-        pod_m = re.search(r"Port of Discharge:\s*([^\n]+)", pdf_text)
+
+        pod_m = re.search(r"Port of Discharge:\s*([^\n]+)", pdf_text, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "PORT VENDRES"
-        
+
         port_info = ("BD", "FR", "CT")
         for k, v in PORT_MAP.items():
             if k in pod_raw:
                 port_info = v
                 break
-                
+
         is_breakbulk = "PALLETS IN HOLD" in chunk.upper()
         cont_type = ""
         cont_qty = ""
@@ -338,15 +354,15 @@ def parse_ael(pdf_text: str):
             cont_m = re.search(r"(\d+)\s*X\s*40['\s]*hc reefer", chunk, re.IGNORECASE)
             cont_qty = int(cont_m.group(1)) if cont_m else 1
             cont_type = "40R"
-            
-        wgt_m = re.search(r"TOTAL GROSS WEIGHT\s*:\s*([\d\s\.,]+)\s*KG", chunk)
+
+        wgt_m = re.search(r"TOTAL GROSS WEIGHT\s*:\s*([\d\s\.,]+)\s*KG", chunk, re.IGNORECASE)
         tonnage = 0.0
         if wgt_m:
             raw_w = wgt_m.group(1).replace(" ", "").replace(",", "")
             tonnage = round(float(raw_w) / 1000.0, 2)
-            
+
         comm = "LBN" if "BANANA" in chunk.upper() else "LPN"
-        
+
         if tonnage > 0:
             rows.append({
                 "SHIP": ship,
@@ -363,86 +379,102 @@ def parse_ael(pdf_text: str):
     return rows
 
 # ==========================================
-# 3. USER INTERFACE
+# 4. USER INTERFACE
 # ==========================================
 
-st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Upload your shipping manifest PDF to automatically extract and code data into your standard Excel format.")
+st.title("🚢 Ghana Ports Export Manifest Auto-Coder (with OCR)")
+st.markdown("Upload your shipping manifest PDF to automatically extract, orient, and code data into your standard format.")
 
-col1, col2 = st.columns([1, 2])
+col1, col2, col3 = st.columns([1, 1, 1])
+
 with col1:
     month_selected = st.selectbox("Select Operating Month", [
         "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
         "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
     ], index=8)
 
+with col2:
+    rotation_option = st.selectbox("Document Orientation / Rotation", [
+        "0° (Normal / Upright)",
+        "90° Clockwise (Sideways / Landscape)",
+        "180° (Upside Down)",
+        "270° (Counter-Clockwise)"
+    ], index=0)
+    
+    rotation_degrees = {
+        "0° (Normal / Upright)": 0,
+        "90° Clockwise (Sideways / Landscape)": 90,
+        "180° (Upside Down)": 180,
+        "270° (Counter-Clockwise)": 270
+    }[rotation_option]
+
+with col3:
+    enable_ocr = st.checkbox("Enable OCR for Scanned Images", value=True)
+    show_debug_text = st.checkbox("Show Raw Text Preview (Diagnostics)", value=False)
+
 uploaded_files = st.file_uploader("Upload Manifest PDFs", type=["pdf"], accept_multiple_files=True)
 
 if uploaded_files:
-    # PROMINENT PROCESS BUTTON
     start_btn = st.button("🚀 Process & Code Manifest", type="primary", use_container_width=True)
-    
+
     if start_btn:
         all_extracted_rows = []
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         for idx, uploaded_file in enumerate(uploaded_files):
-            status_text.text(f"Reading file {idx + 1} of {len(uploaded_files)}: {uploaded_file.name}...")
-            
-            if not is_valid_pdf(uploaded_file):
-                st.error(f"⚠️ Security Alert: '{uploaded_file.name}' is not a valid PDF file and was skipped.")
-                continue
-                
-            with pdfplumber.open(uploaded_file) as pdf:
-                total_pages = len(pdf.pages)
-                pages_text = []
-                for p_idx, page in enumerate(pdf.pages):
-                    status_text.text(f"Extracting text from page {p_idx + 1} of {total_pages}...")
-                    txt = page.extract_text() or ""
-                    pages_text.append(txt)
-                
-                full_text = "\n".join(pages_text)
-                
-            # Check if text is readable or scanned
-            if len(full_text.strip()) < 50:
-                st.warning(f"⚠️ Notice: '{uploaded_file.name}' appears to be a scanned image with no embedded text layer.")
-                continue
-                
-            status_text.text("Coding data against master dictionaries...")
-            
-            if "MAERSK" in full_text and "ML Export Manifest" in full_text:
+            file_bytes = uploaded_file.read()
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            total_pages = len(doc)
+            pages_text = []
+
+            for p_idx in range(total_pages):
+                status_text.text(f"Extracting & Orienting page {p_idx + 1} of {total_pages}...")
+                page = doc[p_idx]
+                t = extract_page_text_with_ocr(page, rotation_degrees, enable_ocr)
+                pages_text.append(t)
+
+            full_text = "\n".join(pages_text)
+
+            if show_debug_text:
+                with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
+                    st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
+
+            status_text.text("Matching shipping lines & coding master tables...")
+
+            parsed = []
+            if "MAERSK" in full_text and ("ML Export Manifest" in full_text or "MAEU" in full_text):
                 parsed = parse_maersk(full_text)
-            elif "CMA\\CGM" in full_text or "CMA CGM" in full_text:
+            elif "CMA CGM" in full_text or "CMA\\CGM" in full_text:
                 parsed = parse_cmacgm(full_text)
             elif "EOLIS" in full_text or "Cameroun Express" in full_text or "AFRICA EXPRESS" in full_text:
                 parsed = parse_ael(full_text)
             else:
-                parsed = parse_maersk(full_text) or parse_cmacgm(full_text)
-                
+                # Try all parsers
+                parsed = parse_maersk(full_text) or parse_cmacgm(full_text) or parse_ael(full_text)
+
             for r in parsed:
                 r["MONTH"] = month_selected
                 all_extracted_rows.append(r)
-                
+
             progress_bar.progress((idx + 1) / len(uploaded_files))
-            
+
         status_text.empty()
         progress_bar.empty()
-        
+
         if all_extracted_rows:
             df = pd.DataFrame(all_extracted_rows)
             col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
             df = df[col_order]
-            
-            st.success(f" Successfully processed and coded {len(df)} manifest rows!")
-            
+
+            st.success(f"Successfully processed and coded {len(df)} manifest rows!")
             st.subheader("Interactive Review Screen (Edit if needed)")
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
-            
+
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                 edited_df.to_excel(writer, index=False, sheet_name="CODED MANIFEST")
-                
+
             st.download_button(
                 label="📥 Download Coded Excel Sheet (.xlsx)",
                 data=buffer.getvalue(),
@@ -450,4 +482,4 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.error("No valid cargo rows were found. Please verify the uploaded PDF is a digital text manifest and not a scanned picture.")
+            st.error("No valid cargo rows were found. Tip: If the manifest is sideways, change 'Document Orientation' to '90° Clockwise' or check 'Show Raw Text Preview' to see what was extracted.")
