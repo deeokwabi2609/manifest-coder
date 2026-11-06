@@ -42,6 +42,7 @@ if not check_password():
 # ==========================================
 
 COUNTRY_MAP = {
+    # AFRICA
     "NIGERIA": ("NG", "AF"), "TOGO": ("TG", "AF"), "BENIN": ("BN", "AF"),
     "GHANA": ("GH", "AF"), "COTE D'IVOIRE": ("IV", "AF"), "IVORY COAST": ("IV", "AF"),
     "BURKINA FASO": ("BF", "AF"), "NIGER": ("NR", "AF"), "MALI": ("ML", "AF"),
@@ -53,20 +54,24 @@ COUNTRY_MAP = {
     "KENYA": ("KY", "AF"), "ANGOLA": ("OH", "AF"), "MOZAMBIQUE": ("MZ", "AF"),
     "NAMIBIA": ("OH", "AF"), "MADAGASCAR": ("OH", "AF"), "GAMBIA": ("GM", "AF"),
 
+    # UK & IRELAND
     "UNITED KINGDOM": ("UK", "UK"), "UK": ("UK", "UK"), "ENGLAND": ("UK", "UK"),
     "SCOTLAND": ("UK", "UK"), "IRELAND": ("IR", "UK"),
 
+    # CONTINENT EUROPE
     "NETHERLANDS": ("NL", "CT"), "HOLLAND": ("NL", "CT"), "BELGIUM": ("BG", "CT"),
     "GERMANY": ("GR", "CT"), "FRANCE": ("FR", "CT"), "POLAND": ("PL", "CT"),
     "DENMARK": ("DK", "CT"), "SWEDEN": ("SE", "CT"), "NORWAY": ("NW", "CT"),
     "FINLAND": ("FL", "CT"), "ESTONIA": ("ET", "CT"), "LATVIA": ("LV", "CT"),
     "LITHUANIA": ("LT", "CT"), "UKRAINE": ("UE", "CT"), "RUSSIA": ("RU", "CT"),
 
+    # MEDITERRANEAN
     "SPAIN": ("SP", "ME"), "ITALY": ("IT", "ME"), "GREECE": ("GC", "ME"),
     "PORTUGAL": ("PG", "ME"), "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"),
     "CYPRUS": ("CY", "ME"), "ROMANIA": ("RM", "ME"), "BULGARIA": ("BU", "ME"),
     "CANARY ISLANDS": ("CI", "ME"),
 
+    # FAR EAST & ASIA
     "INDIA": ("IN", "FE"), "CHINA": ("CH", "FE"), "JAPAN": ("JP", "FE"),
     "SOUTH KOREA": ("SK", "FE"), "KOREA": ("SK", "FE"), "VIETNAM": ("VT", "FE"),
     "MALAYSIA": ("MY", "FE"), "INDONESIA": ("ID", "FE"), "THAILAND": ("TH", "FE"),
@@ -74,8 +79,10 @@ COUNTRY_MAP = {
     "HONGKONG": ("HK", "FE"), "PAKISTAN": ("PK", "FE"), "BANGLADESH": ("BD", "FE"),
     "SRI LANKA": ("SR", "FE"), "PHILIPPINES": ("PH", "FE"),
 
+    # NORTH AMERICA
     "UNITED STATES": ("US", "NA"), "USA": ("US", "NA"), "CANADA": ("CN", "NA"),
 
+    # OTHER
     "BRAZIL": ("BZ", "OH"), "ARGENTINA": ("AR", "OH"), "AUSTRALIA": ("AU", "OH"),
     "NEW ZEALAND": ("NZ", "OH"), "UNITED ARAB EMIRATES": ("AE", "OH"), "UAE": ("AE", "OH"),
     "DUBAI": ("AE", "OH"), "SAUDI ARABIA": ("SB", "OH"), "JORDAN": ("JD", "OH"),
@@ -114,7 +121,51 @@ PORT_MAP = {
 }
 
 # ==========================================
-# 2. HELPER FUNCTIONS
+# 2. UNIVERSAL VESSEL NAME ENGINE
+# ==========================================
+
+def clean_vessel_name(raw_name: str) -> str:
+    """Strips voyage numbers, IMO numbers, and noise from the extracted ship name."""
+    # Remove obvious table keywords
+    name = re.sub(r"\b(VOYAGE|VOY|IMO|FLAG|PAGE|OUTWARD|INBOUND|NATIONALITY)\b.*", "", raw_name, flags=re.IGNORECASE)
+    # Remove trailing voyage numbers like 2632E, 021E, 630/E, CSYD0116E, MAS27E26
+    name = re.sub(r"\s+[0-9A-Z]{2,10}(?:/[EWNS])?$", "", name.strip())
+    name = re.sub(r"\s+[0-9]{3,5}[A-Z]?$", "", name.strip())
+    name = re.sub(r"[\r\n\t]+", " ", name)
+    name = re.sub(r"\s{2,}", " ", name).strip().upper()
+    return name
+
+def extract_vessel_name(pdf_text: str) -> str:
+    """Reads the exact ship name from any shipping line manifest."""
+    # Pattern 1: ONE and PIL standard box header ("1.Name of ship")
+    m = re.search(r"1\.Name of ship[^\n]*\n\s*([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+[0-9]{2,5}[A-Z]?|\s+[0-9]{6,}|\s*2\.Port|\n)", pdf_text, re.IGNORECASE)
+    if m and len(m.group(1).strip()) > 2:
+        return clean_vessel_name(m.group(1))
+
+    # Pattern 2: "Vessel : [NAME]" or "VESSEL: [NAME]"
+    m = re.search(r"\bVESSEL\s*[:\n]\s*(?:\([A-Z0-9]+\)\s*)?([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+FLAG:|\s+Voy|\s+VOYAGE|\s+Page|\s*IMO|\n)", pdf_text, re.IGNORECASE)
+    if m and len(m.group(1).strip()) > 2:
+        return clean_vessel_name(m.group(1))
+
+    # Pattern 3: "Name of ship: [NAME]" (AEL / Eolis)
+    m = re.search(r"Name of ship\s*[:\n]\s*([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+Voyage|\s+Sailing|\n)", pdf_text, re.IGNORECASE)
+    if m and len(m.group(1).strip()) > 2:
+        return clean_vessel_name(m.group(1))
+
+    # Pattern 4: Top header format like "CONDOR 630/E"
+    m = re.search(r"(?:^|\n)\s*([A-Za-z\s]{3,25})\s+\d{3,4}/[EWNS]", pdf_text)
+    if m:
+        return clean_vessel_name(m.group(1))
+
+    # Pattern 5: Line immediately following "Vessel"
+    m = re.search(r"Vessel[^\n]*\n\s*([A-Za-z0-9\s\.\-]+)", pdf_text, re.IGNORECASE)
+    if m and len(m.group(1).strip()) > 2:
+        return clean_vessel_name(m.group(1))
+
+    return "UNKNOWN VESSEL"
+
+# ==========================================
+# 3. HELPER FUNCTIONS
 # ==========================================
 
 SEARCH_CACHE = {}
@@ -271,24 +322,18 @@ def parse_num(val_str: str) -> float:
         return 0.0
 
 # ==========================================
-# 3. SPECIALIZED CARRIER PARSERS
+# 4. CARRIER PARSERS
 # ==========================================
 
-def parse_one(pdf_text: str, use_web_search: bool = True):
-    """Universal parser for all ONE (Ocean Network Express) manifest variants."""
+def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    
-    # 1. Flexible Vessel Name Extraction
-    ship_m = re.search(r"(?:1\.Name of ship|Vessel Name|Vessel)[^\n]*\n\s*([A-Z0-9\s]+?)(?:CSYD|\b\d{4}[A-Z]?\b|IMO|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "DAMMAM EXPRESS"
+    ship = ship_name
 
-    # 2. Extract every B/L on the page (supports multiple B/Ls per page)
     bl_numbers = list(set(re.findall(r"\b(ONEY[A-Z0-9]{8,15})\b", pdf_text)))
     if not bl_numbers:
         bl_numbers = list(set(re.findall(r"\b([A-Z]{4}\d{8,12})\b", pdf_text)))
 
     for bl_no in bl_numbers:
-        # Slice from this B/L to the next B/L
         pattern = rf"(?:^|\n)\s*{re.escape(bl_no)}\b[\s\S]*?(?=(?:\n\s*ONEY[A-Z0-9]+\b|\n\s*OUTWARD|\Z))"
         matches = re.findall(pattern, pdf_text)
         chunk = "\n".join(matches) if matches else ""
@@ -296,24 +341,20 @@ def parse_one(pdf_text: str, use_web_search: bool = True):
         if not chunk or is_empty_equipment(chunk):
             continue
 
-        # 3. Destination Resolution (Supports with or without country prefix e.g. ZA-DURBAN or just DURBAN)
         dest_m = re.search(r"(?:Final destination|5b\.Port of discharge|Port of discharge)[^\n]*\n[^\n]*?\s*([A-Za-z0-9\s-]+?)(?:\s{2,}|\n|$)", chunk, re.IGNORECASE)
         pod_raw = dest_m.group(1).strip().upper() if dest_m else ""
         if not pod_raw:
-            # Fallback scan across the entire page for destination
             page_dest = re.search(r"5b\.Port of discharge\s*([^\n]+)", pdf_text, re.IGNORECASE)
             pod_raw = page_dest.group(1).strip().upper() if page_dest else "DURBAN"
 
         port_info = resolve_port_info(pod_raw, chunk, use_web_search)
 
-        # 4. Gross Weight Extraction
         wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\(|\n)", chunk, re.IGNORECASE)
         val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
         tonnage = round(val if (0.0 < val < 500.0) else val / 1000.0, 2)
         if tonnage <= 0.0:
             continue
 
-        # 5. Multiple Container Parsing (Handles mixed containers e.g. 1X20ST, 1X40HC)
         container_groups = re.findall(r"(\d+)\s*X\s*(\d{2}[A-Za-z0-9]+)", chunk, re.IGNORECASE)
         
         desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Za-z\s\(\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
@@ -321,11 +362,9 @@ def parse_one(pdf_text: str, use_web_search: bool = True):
         comm = classify_commodity(desc, use_web_search=use_web_search)
 
         if container_groups:
-            # If multiple container sizes exist on the same B/L, split or output each
             total_containers = sum(int(q) for q, _ in container_groups)
             for q_str, sz_str in container_groups:
                 q_val = int(q_str)
-                # Proportionate weight share if multiple sizes
                 c_tonnage = round(tonnage * (q_val / total_containers), 2) if total_containers > 0 else tonnage
                 rows.append({
                     "SHIP": ship, "SHIP LINE": "OCEAN NETWORK EXPRESS", "AGENT": "ONE GH. LTD",
@@ -333,7 +372,6 @@ def parse_one(pdf_text: str, use_web_search: bool = True):
                     "CONTYPE": normalize_container(sz_str), "CONTQTY": q_val, "COMMODITY": comm, "TONNAGES": f"{c_tonnage:.2f}"
                 })
         else:
-            # Fallback: Count (CN) container tags in table
             cont_tags = re.findall(r"\(CN\)\s+([A-Z0-9]+)", chunk)
             cont_qty = len(cont_tags) if cont_tags else 1
             cont_type = "40D" if "40" in chunk else "20D"
@@ -344,10 +382,9 @@ def parse_one(pdf_text: str, use_web_search: bool = True):
             })
     return rows
 
-def parse_pil(pdf_text: str, use_web_search: bool = True):
+def parse_pil(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"Name of ship[^\n]*\n\s*([A-Z0-9\s]+?)(?:CSYD|\b\d{4}|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "KOTA SYDNEY"
+    ship = ship_name
 
     sections = re.split(r"(?:\n|^)(?=OUTWARD)", pdf_text)
     for sec in sections:
@@ -386,10 +423,9 @@ def parse_pil(pdf_text: str, use_web_search: bool = True):
             })
     return rows
 
-def parse_goldstar(pdf_text: str, use_web_search: bool = True):
+def parse_goldstar(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"([A-Z0-9\s]+?)\s+\d{3}/[EW]", pdf_text)
-    ship = ship_m.group(1).strip() if ship_m else "CONDOR"
+    ship = ship_name
 
     bl_chunks = re.split(r"(?:\n|^)(?=Bill type:)", pdf_text)
     for chunk in bl_chunks[1:]:
@@ -419,10 +455,9 @@ def parse_goldstar(pdf_text: str, use_web_search: bool = True):
         })
     return rows
 
-def parse_arkas(pdf_text: str, use_web_search: bool = True):
+def parse_arkas(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)\s+MAS\w+", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "MICHEL A"
+    ship = ship_name
 
     bl_chunks = re.split(r"(?:\n|^)(?=B/L#:)", pdf_text)
     for chunk in bl_chunks[1:]:
@@ -457,10 +492,9 @@ def parse_arkas(pdf_text: str, use_web_search: bool = True):
         })
     return rows
 
-def parse_cosco(pdf_text: str, use_web_search: bool = True):
+def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"VESSEL\s*:\s*(?:\([A-Z]+\))?\s*([A-Z0-9\s]+?)(?:SHIP FLAG|Voy|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "EA CENTAURUS"
+    ship = ship_name
 
     if "B/LNUMBER:" in pdf_text:
         bl_chunks = re.split(r"(?:\n|^)(?=B/LNUMBER:)", pdf_text)
@@ -517,11 +551,9 @@ def parse_cosco(pdf_text: str, use_web_search: bool = True):
             })
     return rows
 
-def parse_maersk(pdf_text: str, use_web_search: bool = True):
+def parse_maersk(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"Vessel\s*\n?\s*([A-Z0-9\s]+?)(?:Voyage|Page|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "VESSEL"
-
+    ship = ship_name
     carrier, agent = ("CMA CGM", "CMA CGM GH. LTD.") if "CMA CGM" in ship else ("MAERSK LINE", "MAERSK GH. LTD.")
 
     bl_chunks = re.split(r"(?:\n|^)\s*(?=[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL))", pdf_text)
@@ -542,7 +574,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
             cont_qty = int(cont_matches[0][0])
             cont_type = normalize_container(cont_matches[0][1])
 
-        # Gross Weight extraction
         cleaned = re.sub(r"Tare\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
         explicit_totals = re.findall(r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|TOTAL\s+CARGO\s+GROSS\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT|MTS)", cleaned, re.IGNORECASE)
         if explicit_totals:
@@ -576,10 +607,9 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
             })
     return rows
 
-def parse_ael(pdf_text: str, use_web_search: bool = True):
+def parse_ael(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
-    ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip().upper() if ship_m else "CAMEROUN EXPRESS"
+    ship = ship_name
 
     bl_chunks = re.split(r"(?:\n|^)(?=TEMPOV\w+|TEMDKR\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
@@ -617,11 +647,11 @@ def parse_ael(pdf_text: str, use_web_search: bool = True):
     return rows
 
 # ==========================================
-# 4. USER INTERFACE & ROUTING
+# 5. USER INTERFACE & DISPATCHER
 # ==========================================
 
 st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Universal Manifest Coding System (Maersk, PIL, ONE, Arkas, Cosco, Gold Star, AEL, CMA CGM).")
+st.markdown("Universal Multi-Carrier Manifest Coding Engine.")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -690,25 +720,27 @@ if uploaded_files:
                 with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
                     st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
 
-            status_text.text("Detecting shipping carrier and extracting cargo rows...")
+            # 1. Dynamically extract the REAL Vessel Name directly from the PDF
+            detected_ship = extract_vessel_name(full_text)
+            status_text.text(f"Detected Vessel: '{detected_ship}' — Processing cargo rows...")
 
-            # Smart Multi-Carrier Router
+            # 2. Smart Multi-Carrier Router (passing the real extracted ship name)
             parsed = []
-            if "OCEAN NETWORK EXPRESS" in full_text or "ONEY" in full_text or "DAMMAM EXPRESS" in full_text or re.search(r"\bONE\b", full_text):
-                parsed = parse_one(full_text, enable_web_search)
-            elif "PIL" in full_text or "PACIFIC INTERNATIONAL" in full_text or "KOTA SYDNEY" in full_text:
-                parsed = parse_pil(full_text, enable_web_search)
-            elif "GOSUTEM" in full_text or "CONDOR 630/E" in full_text:
-                parsed = parse_goldstar(full_text, enable_web_search)
-            elif "MICHEL A" in full_text or "ARKU" in full_text or "APM Terminals Barcelona" in full_text:
-                parsed = parse_arkas(full_text, enable_web_search)
+            if "OCEAN NETWORK EXPRESS" in full_text or "ONEY" in full_text or re.search(r"\bONE\b", full_text):
+                parsed = parse_one(full_text, detected_ship, enable_web_search)
+            elif "PIL" in full_text or "PACIFIC INTERNATIONAL" in full_text or "KOTA" in full_text:
+                parsed = parse_pil(full_text, detected_ship, enable_web_search)
+            elif "GOSUTEM" in full_text or "GOLD STAR" in full_text or "CONDOR 630" in full_text:
+                parsed = parse_goldstar(full_text, detected_ship, enable_web_search)
+            elif "ARKU" in full_text or "APM Terminals Barcelona" in full_text or "MICHEL A" in full_text:
+                parsed = parse_arkas(full_text, detected_ship, enable_web_search)
             elif "COSCO SHIPPING" in full_text or "COSU" in full_text or "EXPORT REPORT MANIFEST" in full_text:
-                parsed = parse_cosco(full_text, enable_web_search)
-            elif "EOLIS" in full_text or "Cameroun Express" in full_text or "AFRICA EXPRESS" in full_text or "TEMPOV" in full_text:
-                parsed = parse_ael(full_text, enable_web_search)
+                parsed = parse_cosco(full_text, detected_ship, enable_web_search)
+            elif "EOLIS" in full_text or "AFRICA EXPRESS" in full_text or "TEMPOV" in full_text:
+                parsed = parse_ael(full_text, detected_ship, enable_web_search)
             else:
                 # Default / Maersk Line parser
-                parsed = parse_maersk(full_text, enable_web_search)
+                parsed = parse_maersk(full_text, detected_ship, enable_web_search)
 
             for r in parsed:
                 r["MONTH"] = month_selected
