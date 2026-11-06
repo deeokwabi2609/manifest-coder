@@ -121,46 +121,67 @@ PORT_MAP = {
 }
 
 # ==========================================
-# 2. UNIVERSAL VESSEL NAME ENGINE
+# 2. ROBUST SHIP & VESSEL NAME DETECTOR
 # ==========================================
+
+HEADER_NOISE_PHRASES = [
+    "PORT WHERE REPORT", "REPORT IS MODE", "REPORT IS MADE", "NAME OF MASTER",
+    "NATIONALITY OF SHIP", "PORT OF LOADING", "PORT OF DISCHARGE", "FINAL DESTINATION",
+    "SAILING DATE", "VESSEL IMO", "PAGE NO", "OUTWARD", "INBOUND", "CARGO MANIFEST",
+    "FOREIGN CARGO", "VOYAGE NO", "SERVICE CODE", "PLACE OF ACCEPTANCE", "PLACE OF DELIVERY"
+]
+
+def is_header_noise(text: str) -> bool:
+    t = text.upper().strip()
+    return any(noise in t for noise in HEADER_NOISE_PHRASES)
 
 def clean_vessel_name(raw_name: str) -> str:
     """Strips voyage numbers, IMO numbers, and noise from the extracted ship name."""
-    # Remove obvious table keywords
-    name = re.sub(r"\b(VOYAGE|VOY|IMO|FLAG|PAGE|OUTWARD|INBOUND|NATIONALITY)\b.*", "", raw_name, flags=re.IGNORECASE)
-    # Remove trailing voyage numbers like 2632E, 021E, 630/E, CSYD0116E, MAS27E26
-    name = re.sub(r"\s+[0-9A-Z]{2,10}(?:/[EWNS])?$", "", name.strip())
-    name = re.sub(r"\s+[0-9]{3,5}[A-Z]?$", "", name.strip())
+    name = raw_name.strip()
+    # Strip label prefixes
+    name = re.sub(r"^(?:1\.\s*)?(?:NAME\s+OF\s+(?:VESSEL|SHIP)|VESSEL\s+NAME|SHIP\s+NAME|VESSEL|SHIP)\s*[:\.]?\s*", "", name, flags=re.IGNORECASE)
+    # Strip carrier codes like (MPI)
+    name = re.sub(r"\([A-Z0-9]+\)", "", name)
+    # Strip 7-digit IMO numbers
+    name = re.sub(r"\b\d{7}\b.*", "", name)
+    # Strip trailing voyage numbers (e.g. 2632E, 021E, 630/E, CSYD0116E, MAS27E26)
+    name = re.sub(r"\b[A-Z0-9]{2,10}(?:/[EWNS])?\b\s*(?:\d+)?$", "", name)
+    # Strip keywords
+    for noise in ["VOYAGE", "VOY", "IMO", "FLAG", "PAGE", "OUTWARD", "INBOUND", "NATIONALITY"]:
+        name = re.sub(rf"\b{noise}\b.*", "", name, flags=re.IGNORECASE)
     name = re.sub(r"[\r\n\t]+", " ", name)
     name = re.sub(r"\s{2,}", " ", name).strip().upper()
     return name
 
 def extract_vessel_name(pdf_text: str) -> str:
-    """Reads the exact ship name from any shipping line manifest."""
-    # Pattern 1: ONE and PIL standard box header ("1.Name of ship")
-    m = re.search(r"1\.Name of ship[^\n]*\n\s*([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+[0-9]{2,5}[A-Z]?|\s+[0-9]{6,}|\s*2\.Port|\n)", pdf_text, re.IGNORECASE)
-    if m and len(m.group(1).strip()) > 2:
-        return clean_vessel_name(m.group(1))
+    """Accurately extracts the vessel name regardless of whether it's called 'Ship', 'Vessel', or in a table."""
+    lines = [line.strip() for line in pdf_text.splitlines() if line.strip()]
 
-    # Pattern 2: "Vessel : [NAME]" or "VESSEL: [NAME]"
-    m = re.search(r"\bVESSEL\s*[:\n]\s*(?:\([A-Z0-9]+\)\s*)?([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+FLAG:|\s+Voy|\s+VOYAGE|\s+Page|\s*IMO|\n)", pdf_text, re.IGNORECASE)
-    if m and len(m.group(1).strip()) > 2:
-        return clean_vessel_name(m.group(1))
+    for i, line in enumerate(lines[:60]):
+        # Case A: Inline format (e.g., "VESSEL: MAERSK HANGZHOU" or "Name of ship: Cameroun Express")
+        m_inline = re.search(r"\b(?:NAME\s+OF\s+(?:VESSEL|SHIP)|VESSEL\s+NAME|SHIP\s+NAME|VESSEL)\s*[:]\s*([A-Za-z0-9\s\.\-/'\"]+)", line, re.IGNORECASE)
+        if m_inline:
+            cand = clean_vessel_name(m_inline.group(1))
+            if cand and not is_header_noise(cand) and len(cand) > 2:
+                return cand
 
-    # Pattern 3: "Name of ship: [NAME]" (AEL / Eolis)
-    m = re.search(r"Name of ship\s*[:\n]\s*([A-Za-z0-9\s\.\-/'\"]+?)(?:\s+Voyage|\s+Sailing|\n)", pdf_text, re.IGNORECASE)
-    if m and len(m.group(1).strip()) > 2:
-        return clean_vessel_name(m.group(1))
+        # Case B: Multi-line table header box (e.g., "1.Name of ship" with value on the line below)
+        if re.search(r"\b(?:1\.\s*)?(?:NAME\s+OF\s+(?:VESSEL|SHIP)|VESSEL\s+NAME|SHIP\s+NAME|VESSEL|SHIP)\b", line, re.IGNORECASE):
+            # Scan down up to 4 lines to skip column headers like "2.Port where report is mode"
+            for next_line in lines[i+1 : i+5]:
+                if is_header_noise(next_line):
+                    continue
+                cand = clean_vessel_name(next_line)
+                if cand and not is_header_noise(cand) and len(cand) > 2:
+                    return cand
 
-    # Pattern 4: Top header format like "CONDOR 630/E"
-    m = re.search(r"(?:^|\n)\s*([A-Za-z\s]{3,25})\s+\d{3,4}/[EWNS]", pdf_text)
-    if m:
-        return clean_vessel_name(m.group(1))
-
-    # Pattern 5: Line immediately following "Vessel"
-    m = re.search(r"Vessel[^\n]*\n\s*([A-Za-z0-9\s\.\-]+)", pdf_text, re.IGNORECASE)
-    if m and len(m.group(1).strip()) > 2:
-        return clean_vessel_name(m.group(1))
+    # Case C: Prominent title like "CONDOR 630/E"
+    for line in lines[:25]:
+        m = re.search(r"^\s*([A-Za-z\s]{3,25})\s+\d{3,4}/[EWNS]", line)
+        if m:
+            cand = clean_vessel_name(m.group(1))
+            if cand and not is_header_noise(cand):
+                return cand
 
     return "UNKNOWN VESSEL"
 
