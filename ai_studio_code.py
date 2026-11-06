@@ -42,7 +42,6 @@ if not check_password():
 # ==========================================
 
 COUNTRY_MAP = {
-    # AFRICA
     "NIGERIA": ("NG", "AF"), "TOGO": ("TG", "AF"), "BENIN": ("BN", "AF"),
     "GHANA": ("GH", "AF"), "COTE D'IVOIRE": ("IV", "AF"), "IVORY COAST": ("IV", "AF"),
     "BURKINA FASO": ("BF", "AF"), "NIGER": ("NR", "AF"), "MALI": ("ML", "AF"),
@@ -54,24 +53,20 @@ COUNTRY_MAP = {
     "KENYA": ("KY", "AF"), "ANGOLA": ("OH", "AF"), "MOZAMBIQUE": ("MZ", "AF"),
     "NAMIBIA": ("OH", "AF"), "MADAGASCAR": ("OH", "AF"), "GAMBIA": ("GM", "AF"),
 
-    # UK & IRELAND
     "UNITED KINGDOM": ("UK", "UK"), "UK": ("UK", "UK"), "ENGLAND": ("UK", "UK"),
     "SCOTLAND": ("UK", "UK"), "IRELAND": ("IR", "UK"),
 
-    # CONTINENT EUROPE
     "NETHERLANDS": ("NL", "CT"), "HOLLAND": ("NL", "CT"), "BELGIUM": ("BG", "CT"),
     "GERMANY": ("GR", "CT"), "FRANCE": ("FR", "CT"), "POLAND": ("PL", "CT"),
     "DENMARK": ("DK", "CT"), "SWEDEN": ("SE", "CT"), "NORWAY": ("NW", "CT"),
     "FINLAND": ("FL", "CT"), "ESTONIA": ("ET", "CT"), "LATVIA": ("LV", "CT"),
     "LITHUANIA": ("LT", "CT"), "UKRAINE": ("UE", "CT"), "RUSSIA": ("RU", "CT"),
 
-    # MEDITERRANEAN
     "SPAIN": ("SP", "ME"), "ITALY": ("IT", "ME"), "GREECE": ("GC", "ME"),
     "PORTUGAL": ("PG", "ME"), "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"),
     "CYPRUS": ("CY", "ME"), "ROMANIA": ("RM", "ME"), "BULGARIA": ("BU", "ME"),
     "CANARY ISLANDS": ("CI", "ME"),
 
-    # FAR EAST & ASIA
     "INDIA": ("IN", "FE"), "CHINA": ("CH", "FE"), "JAPAN": ("JP", "FE"),
     "SOUTH KOREA": ("SK", "FE"), "KOREA": ("SK", "FE"), "VIETNAM": ("VT", "FE"),
     "MALAYSIA": ("MY", "FE"), "INDONESIA": ("ID", "FE"), "THAILAND": ("TH", "FE"),
@@ -79,10 +74,8 @@ COUNTRY_MAP = {
     "HONGKONG": ("HK", "FE"), "PAKISTAN": ("PK", "FE"), "BANGLADESH": ("BD", "FE"),
     "SRI LANKA": ("SR", "FE"), "PHILIPPINES": ("PH", "FE"),
 
-    # NORTH AMERICA
     "UNITED STATES": ("US", "NA"), "USA": ("US", "NA"), "CANADA": ("CN", "NA"),
 
-    # OTHER
     "BRAZIL": ("BZ", "OH"), "ARGENTINA": ("AR", "OH"), "AUSTRALIA": ("AU", "OH"),
     "NEW ZEALAND": ("NZ", "OH"), "UNITED ARAB EMIRATES": ("AE", "OH"), "UAE": ("AE", "OH"),
     "DUBAI": ("AE", "OH"), "SAUDI ARABIA": ("SB", "OH"), "JORDAN": ("JD", "OH"),
@@ -117,6 +110,7 @@ PORT_MAP = {
     "MUNDRA": ("OH", "IN", "FE"), "CHENNAI": ("MD", "IN", "FE"), "TUTICORIN": ("OH", "IN", "FE"),
     "VISAKHAPATNAM": ("OH", "IN", "FE"), "YOKOHAMA": ("YK", "JP", "FE"), "TOKYO": ("TK", "JP", "FE"),
     "NEW YORK": ("NY", "US", "NA"), "SAVANNAH": ("SV", "US", "NA"), "HOUSTON": ("HO", "US", "NA"),
+    "COLOMBO": ("OH", "SR", "FE")
 }
 
 # ==========================================
@@ -221,7 +215,7 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LME"
         if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "GYPSUM", "CHLORIDE", "SALT", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE", "MANGANESE", "ENZYMES", "BOSTIK"]) or hs_code.startswith(("2501", "2520", "28", "29", "3507", "38", "3901", "7202")):
             return "LCH"
-        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "SOYABEAN OIL", "BEVERAGE", "VODKA", "SOAP", "BEAUTY", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR", "RICE", "PARBOILED RICE", "TEA", "MEDICINE", "PHARMACEUTICAL", "TAILORING", "POPPADOM", "FILTERATION", "YARN", "FABRIC", "PAPERBOARD", "FOOTWEAR", "SPORTS MATERIAL", "CATERING"]):
+        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOODSTUFF", "BISCUITS", "SUGAR", "OIL", "SOYABEAN OIL", "BEVERAGE", "VODKA", "SOAP", "BEAUTY", "BEAUTY PREPARATION", "COSMETIC", "TEXTILE", "CLOTHING", "USED CLOTH", "SHOES", "SYNTHETIC FIBER", "HAIR", "RICE", "PARBOILED RICE", "TEA", "MEDICINE", "PHARMACEUTICAL", "TAILORING", "POPPADOM", "FILTERATION", "YARN", "FABRIC", "PAPERBOARD", "FOOTWEAR", "SPORTS MATERIAL", "CATERING"]):
             return "LPE"
         if "GRANITE" in text_to_check or "TILES" in text_to_check or hs_code.startswith("6907"):
             return "LGC"
@@ -280,6 +274,76 @@ def parse_num(val_str: str) -> float:
 # 3. SPECIALIZED CARRIER PARSERS
 # ==========================================
 
+def parse_one(pdf_text: str, use_web_search: bool = True):
+    """Universal parser for all ONE (Ocean Network Express) manifest variants."""
+    rows = []
+    
+    # 1. Flexible Vessel Name Extraction
+    ship_m = re.search(r"(?:1\.Name of ship|Vessel Name|Vessel)[^\n]*\n\s*([A-Z0-9\s]+?)(?:CSYD|\b\d{4}[A-Z]?\b|IMO|\n)", pdf_text, re.IGNORECASE)
+    ship = ship_m.group(1).strip() if ship_m else "DAMMAM EXPRESS"
+
+    # 2. Extract every B/L on the page (supports multiple B/Ls per page)
+    bl_numbers = list(set(re.findall(r"\b(ONEY[A-Z0-9]{8,15})\b", pdf_text)))
+    if not bl_numbers:
+        bl_numbers = list(set(re.findall(r"\b([A-Z]{4}\d{8,12})\b", pdf_text)))
+
+    for bl_no in bl_numbers:
+        # Slice from this B/L to the next B/L
+        pattern = rf"(?:^|\n)\s*{re.escape(bl_no)}\b[\s\S]*?(?=(?:\n\s*ONEY[A-Z0-9]+\b|\n\s*OUTWARD|\Z))"
+        matches = re.findall(pattern, pdf_text)
+        chunk = "\n".join(matches) if matches else ""
+
+        if not chunk or is_empty_equipment(chunk):
+            continue
+
+        # 3. Destination Resolution (Supports with or without country prefix e.g. ZA-DURBAN or just DURBAN)
+        dest_m = re.search(r"(?:Final destination|5b\.Port of discharge|Port of discharge)[^\n]*\n[^\n]*?\s*([A-Za-z0-9\s-]+?)(?:\s{2,}|\n|$)", chunk, re.IGNORECASE)
+        pod_raw = dest_m.group(1).strip().upper() if dest_m else ""
+        if not pod_raw:
+            # Fallback scan across the entire page for destination
+            page_dest = re.search(r"5b\.Port of discharge\s*([^\n]+)", pdf_text, re.IGNORECASE)
+            pod_raw = page_dest.group(1).strip().upper() if page_dest else "DURBAN"
+
+        port_info = resolve_port_info(pod_raw, chunk, use_web_search)
+
+        # 4. Gross Weight Extraction
+        wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\(|\n)", chunk, re.IGNORECASE)
+        val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
+        tonnage = round(val if (0.0 < val < 500.0) else val / 1000.0, 2)
+        if tonnage <= 0.0:
+            continue
+
+        # 5. Multiple Container Parsing (Handles mixed containers e.g. 1X20ST, 1X40HC)
+        container_groups = re.findall(r"(\d+)\s*X\s*(\d{2}[A-Za-z0-9]+)", chunk, re.IGNORECASE)
+        
+        desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Za-z\s\(\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
+        desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
+        comm = classify_commodity(desc, use_web_search=use_web_search)
+
+        if container_groups:
+            # If multiple container sizes exist on the same B/L, split or output each
+            total_containers = sum(int(q) for q, _ in container_groups)
+            for q_str, sz_str in container_groups:
+                q_val = int(q_str)
+                # Proportionate weight share if multiple sizes
+                c_tonnage = round(tonnage * (q_val / total_containers), 2) if total_containers > 0 else tonnage
+                rows.append({
+                    "SHIP": ship, "SHIP LINE": "OCEAN NETWORK EXPRESS", "AGENT": "ONE GH. LTD",
+                    "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
+                    "CONTYPE": normalize_container(sz_str), "CONTQTY": q_val, "COMMODITY": comm, "TONNAGES": f"{c_tonnage:.2f}"
+                })
+        else:
+            # Fallback: Count (CN) container tags in table
+            cont_tags = re.findall(r"\(CN\)\s+([A-Z0-9]+)", chunk)
+            cont_qty = len(cont_tags) if cont_tags else 1
+            cont_type = "40D" if "40" in chunk else "20D"
+            rows.append({
+                "SHIP": ship, "SHIP LINE": "OCEAN NETWORK EXPRESS", "AGENT": "ONE GH. LTD",
+                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
+                "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
+            })
+    return rows
+
 def parse_pil(pdf_text: str, use_web_search: bool = True):
     rows = []
     ship_m = re.search(r"Name of ship[^\n]*\n\s*([A-Z0-9\s]+?)(?:CSYD|\b\d{4}|\n)", pdf_text, re.IGNORECASE)
@@ -320,45 +384,6 @@ def parse_pil(pdf_text: str, use_web_search: bool = True):
                 "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
                 "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
             })
-    return rows
-
-def parse_one(pdf_text: str, use_web_search: bool = True):
-    rows = []
-    ship_m = re.search(r"1\.Name of ship[^\n]*\n\s*([A-Z0-9\s]+?)(?:\d{4}|\n)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip() if ship_m else "DAMMAM EXPRESS"
-
-    bl_chunks = re.split(r"(?:\n|^)(?=ONEY[A-Z0-9]+)", pdf_text)
-    for chunk in bl_chunks[1:]:
-        if is_empty_equipment(chunk):
-            continue
-
-        dest_m = re.search(r"(?:Final destination|5b\.Port of discharge)[^\n]*\n[^\n]*?\s*([A-Z]{2}-[A-Z\s]+)", chunk, re.IGNORECASE)
-        pod_raw = dest_m.group(1).strip().upper() if dest_m else "DURBAN"
-        port_info = resolve_port_info(pod_raw, chunk, use_web_search)
-
-        wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\()", chunk, re.IGNORECASE)
-        val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
-        tonnage = round(val if val < 1000.0 else val / 1000.0, 2)
-        if tonnage <= 0.0:
-            continue
-
-        c_match = re.search(r"(\d+)\s*X\s*(\d{2}[A-Z]+)", chunk)
-        if c_match:
-            cont_qty = int(c_match.group(1))
-            cont_type = normalize_container(c_match.group(2))
-        else:
-            cont_qty = len(re.findall(r"\(CN\)\s+[A-Z0-9]+", chunk)) or 1
-            cont_type = "20D"
-
-        desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Z\s\(\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
-        desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
-        comm = classify_commodity(desc, use_web_search=use_web_search)
-
-        rows.append({
-            "SHIP": ship, "SHIP LINE": "OCEAN NETWORK EXPRESS", "AGENT": "ONE GH. LTD",
-            "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
-            "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
-        })
     return rows
 
 def parse_goldstar(pdf_text: str, use_web_search: bool = True):
@@ -669,10 +694,10 @@ if uploaded_files:
 
             # Smart Multi-Carrier Router
             parsed = []
-            if "PIL" in full_text or "PACIFIC INTERNATIONAL" in full_text or "KOTA SYDNEY" in full_text:
-                parsed = parse_pil(full_text, enable_web_search)
-            elif "OCEAN NETWORK EXPRESS" in full_text or "ONEY" in full_text or "DAMMAM EXPRESS" in full_text:
+            if "OCEAN NETWORK EXPRESS" in full_text or "ONEY" in full_text or "DAMMAM EXPRESS" in full_text or re.search(r"\bONE\b", full_text):
                 parsed = parse_one(full_text, enable_web_search)
+            elif "PIL" in full_text or "PACIFIC INTERNATIONAL" in full_text or "KOTA SYDNEY" in full_text:
+                parsed = parse_pil(full_text, enable_web_search)
             elif "GOSUTEM" in full_text or "CONDOR 630/E" in full_text:
                 parsed = parse_goldstar(full_text, enable_web_search)
             elif "MICHEL A" in full_text or "ARKU" in full_text or "APM Terminals Barcelona" in full_text:
