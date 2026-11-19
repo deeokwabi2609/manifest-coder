@@ -38,155 +38,206 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 1. GHANA PORT AUTHORITY (GPHA) MASTER CODES
+# 1. COMPLETE GPHA STATISTICAL PORT MASTER LIST
+# (Directly transcribed from your reference sheet)
 # ==========================================
 
-# Strict conversion of ISO / raw country names to GPHA Statistical Codes
-GPHA_COUNTRY_MAP = {
+FULL_PORT_MAP = {
     # AFRICA (RANGE: AF)
-    "NIGERIA": ("NG", "AF"), "NG": ("NG", "AF"),
-    "TOGO": ("TG", "AF"), "TG": ("TG", "AF"),
-    "BENIN": ("BN", "AF"), "BN": ("BN", "AF"), "BJ": ("BN", "AF"),
-    "GHANA": ("GH", "AF"), "GH": ("GH", "AF"),
-    "COTE D'IVOIRE": ("IV", "AF"), "IVORY COAST": ("IV", "AF"), "IV": ("IV", "AF"), "CI": ("IV", "AF"),
-    "BURKINA FASO": ("BF", "AF"), "BF": ("BF", "AF"),
-    "NIGER": ("NR", "AF"), "NR": ("NR", "AF"), "NE": ("NR", "AF"),
-    "MALI": ("ML", "AF"), "ML": ("ML", "AF"),
-    "SENEGAL": ("SN", "AF"), "SN": ("SN", "AF"),
-    "SOUTH AFRICA": ("SA", "AF"), "SA": ("SA", "AF"), "ZA": ("SA", "AF"),
-    "CAMEROON": ("CM", "AF"), "CM": ("CM", "AF"),
-    "CONGO": ("CG", "AF"), "CG": ("CG", "AF"),
-    "GABON": ("GA", "AF"), "GA": ("GA", "AF"),
-    "GUINEA": ("GN", "AF"), "GN": ("GN", "AF"),
-    "SIERRA LEONE": ("SL", "AF"), "SL": ("SL", "AF"),
-    "LIBERIA": ("LB", "AF"), "LB": ("LB", "AF"),
-    "MAURITANIA": ("MR", "AF"), "MR": ("MR", "AF"),
-    "EGYPT": ("EY", "AF"), "EY": ("EY", "AF"), "EG": ("EY", "AF"),
-    "MOROCCO": ("MC", "AF"), "MC": ("MC", "AF"), "MA": ("MC", "AF"),
-    "ALGERIA": ("AG", "AF"), "AG": ("AG", "AF"), "DZ": ("AG", "AF"),
-    "TUNISIA": ("TS", "AF"), "TS": ("TS", "AF"), "TN": ("TS", "AF"),
-    "LIBYA": ("LY", "AF"), "LY": ("LY", "AF"),
-    "TANZANIA": ("TZ", "AF"), "TZ": ("TZ", "AF"),
-    "KENYA": ("KY", "AF"), "KY": ("KY", "AF"), "KE": ("KY", "AF"),
-    "ANGOLA": ("OH", "AF"), "AO": ("OH", "AF"),
-    "MOZAMBIQUE": ("MZ", "AF"), "MZ": ("MZ", "AF"),
-    "NAMIBIA": ("OH", "AF"), "NA": ("OH", "AF"),
+    "APAPA": ("OH", "NG", "AF"), "LAGOS": ("LG", "NG", "AF"), "TINCAN": ("LG", "NG", "AF"),
+    "ONNE": ("OH", "NG", "AF"), "PORT HARCOURT": ("OH", "NG", "AF"), "LEKKI": ("OH", "NG", "AF"),
+    "ABIDJAN": ("AJ", "IV", "AF"), "SAN PEDRO": ("OH", "IV", "AF"),
+    "LOME": ("LM", "TG", "AF"), "COTONOU": ("CU", "BN", "AF"),
+    "DAKAR": ("DA", "SN", "AF"), "BANJUL": ("BJ", "GM", "AF"),
+    "CONAKRY": ("CN", "GN", "AF"), "FREETOWN": ("FT", "SL", "AF"),
+    "MONROVIA": ("OH", "LB", "AF"), "NOUAKCHOTT": ("OH", "MR", "AF"),
+    "NOUADHIBOU": ("OH", "MR", "AF"), "BATA": ("OH", "OH", "AF"), "MALABO": ("OH", "OH", "AF"),
+    "DOUALA": ("DL", "CM", "AF"), "LIBREVILLE": ("LB", "GA", "AF"), "PORT GENTIL": ("PG", "GA", "AF"),
+    "POINTE NOIRE": ("OH", "CG", "AF"), "POINT NOIRE": ("OH", "CG", "AF"),
+    "MATADI": ("MA", "CG", "AF"), "KINSHASA": ("OH", "ZR", "AF"),
+    "LUANDA": ("OH", "OH", "AF"), "LOBITO": ("OH", "OH", "AF"),
+    "WALVIS BAY": ("OH", "OH", "AF"),
+    "CAPETOWN": ("CN", "SA", "AF"), "CAPE TOWN": ("CN", "SA", "AF"),
+    "DURBAN": ("DR", "SA", "AF"), "PORT ELIZABETH": ("PE", "SA", "AF"),
+    "JOHANNESBURG": ("OH", "SA", "AF"), "EAST LONDON": ("OH", "SA", "AF"),
+    "MAPUTO": ("MP", "MZ", "AF"), "BEIRA": ("OH", "MZ", "AF"),
+    "DAR ES SALAAM": ("ES", "TZ", "AF"), "MOMBASA": ("OH", "KY", "AF"),
+    "TEMA": ("TM", "GH", "AF"), "TAKORADI": ("TD", "GH", "AF"),
+    "ALEXANDRIA": ("OH", "EY", "AF"), "DAMIETTA": ("OH", "EY", "AF"), "PORT SAID": ("OH", "EY", "AF"),
+    "CASABLANCA": ("CB", "MC", "AF"), "CASSABLANCA": ("CB", "MC", "AF"),
+    "AGADIR": ("AG", "MC", "AF"), "AGABIR": ("AG", "MC", "AF"), "TANGER": ("OH", "MC", "AF"),
+    "ALGIERS": ("AL", "AG", "AF"), "ALGHERS": ("AL", "AG", "AF"),
+    "TUNIS": ("OH", "TS", "AF"), "SFAX": ("OH", "TS", "AF"), "SOUSSE": ("OH", "TS", "AF"),
+    "TRIPOLI": ("TL", "LY", "AF"), "BENGHAZI": ("BZ", "LY", "CT"),
+    "DJIBOUTI": ("OH", "DJ", "AF"), "EHOALA": ("OH", "OH", "AF"),
 
     # UNITED KINGDOM & IRELAND (RANGE: UK)
-    "UNITED KINGDOM": ("UK", "UK"), "UK": ("UK", "UK"), "GB": ("UK", "UK"),
-    "ENGLAND": ("UK", "UK"), "SCOTLAND": ("UK", "UK"),
-    "IRELAND": ("IR", "UK"), "IR": ("IR", "UK"), "IE": ("IR", "UK"),
+    "TILBURY": ("TY", "UK", "UK"), "LIVERPOOL": ("LV", "UK", "UK"), "LONDON": ("LD", "UK", "UK"),
+    "FELIXSTOWE": ("FX", "UK", "UK"), "SOUTHAMPTON": ("OH", "UK", "UK"), "TEESPORT": ("TE", "UK", "UK"),
+    "CHIRK": ("TE", "UK", "UK"), "AVONMOUTH": ("AV", "UK", "UK"), "AMOIMOUTH": ("AV", "UK", "UK"),
+    "BIRMINGHAM": ("BH", "UK", "UK"), "IMMINGHAM": ("IM", "UK", "UK"), "HULL": ("HU", "UK", "UK"),
+    "HULI": ("HU", "UK", "UK"), "GOOLE": ("GO", "UK", "UK"), "GRANGEMOUTH": ("OH", "UK", "UK"),
+    "DOVER": ("OH", "UK", "UK"), "HARWICH": ("HW", "UK", "UK"), "IPSWICH": ("IP", "UK", "UK"),
+    "THAMES PORT": ("OH", "UK", "UK"), "NEW PORT": ("OH", "UK", "UK"),
+    "DUBLIN": ("DU", "IR", "UK"), "BELFAST": ("BT", "IR", "UK"), "CORK": ("CK", "IR", "UK"),
 
     # CONTINENT EUROPE (RANGE: CT)
-    "NETHERLANDS": ("NL", "CT"), "HOLLAND": ("NL", "CT"), "NL": ("NL", "CT"),
-    "BELGIUM": ("BG", "CT"), "BG": ("BG", "CT"), "BE": ("BG", "CT"),
-    "GERMANY": ("GR", "CT"), "GR": ("GR", "CT"), "DE": ("GR", "CT"),
-    "FRANCE": ("FR", "CT"), "FR": ("FR", "CT"),
-    "POLAND": ("PL", "CT"), "PL": ("PL", "CT"),
-    "DENMARK": ("DK", "CT"), "DK": ("DK", "CT"),
-    "SWEDEN": ("SE", "CT"), "SE": ("SE", "CT"),
-    "NORWAY": ("NW", "CT"), "NW": ("NW", "CT"), "NO": ("NW", "CT"),
-    "FINLAND": ("FL", "CT"), "FL": ("FL", "CT"), "FI": ("FL", "CT"),
-    "ESTONIA": ("ET", "CT"), "ET": ("ET", "CT"), "EE": ("ET", "CT"),
-    "LATVIA": ("LV", "CT"), "LV": ("LV", "CT"),
-    "LITHUANIA": ("LT", "CT"), "LT": ("LT", "CT"),
-    "UKRAINE": ("UE", "CT"), "UE": ("UE", "CT"), "UA": ("UE", "CT"),
-    "RUSSIA": ("RU", "CT"), "RU": ("RU", "CT"),
+    "ANTWERP": ("AT", "BG", "CT"), "BRUGES": ("ZB", "BG", "CT"), "ZEEBRUGGE": ("ZB", "BG", "CT"),
+    "ROTTERDAM": ("RM", "NL", "CT"), "AMSTERDAM": ("AM", "NL", "CT"), "FLUSHING": ("FS", "NL", "CT"),
+    "DORDRECHT": ("RM", "NL", "CT"), "DELFZIJL": ("DZ", "NL", "CT"), "BARENDRECHT": ("OH", "NL", "CT"),
+    "HAMBURG": ("HM", "GR", "CT"), "BREMERHAVEN": ("BM", "GR", "CT"), "BREMENHAVEN": ("BM", "GR", "CT"),
+    "ROSTOCK": ("RK", "GR", "CT"), "NORDENHAM": ("NM", "GR", "CT"),
+    "LE HAVRE": ("LH", "FR", "CT"), "DUNKERQUE": ("DK", "FR", "CT"), "DUNKIRK": ("DK", "FR", "CT"),
+    "MARSEILLE": ("MS", "FR", "CT"), "MARSEILE": ("MS", "FR", "CT"), "ROUEN": ("RN", "FR", "CT"),
+    "PORT VENDRES": ("BD", "FR", "CT"), "BORDEAUX": ("BD", "FR", "CT"), "FOS SUR MER": ("OH", "FR", "CT"),
+    "NANTES": ("OH", "FR", "CT"), "CALAIS": ("OH", "FR", "CT"), "BREST": ("OH", "FR", "CT"),
+    "SETE": ("SE", "FR", "CT"), "BOULOGNE": ("OH", "FR", "CT"),
+    "GDYNIA": ("GA", "PL", "CT"), "GDANSK": ("GK", "PL", "CT"), "SZCZECIN": ("SZ", "PL", "CT"),
+    "AARHUS": ("AH", "DK", "CT"), "COPENHAGEN": ("CP", "DK", "CT"),
+    "GOTHENBURG": ("GB", "SE", "CT"), "GOTHENBORG": ("GB", "SE", "CT"), "STOCKHOLM": ("SM", "SE", "CT"),
+    "HELSINGBORG": ("OH", "SE", "CT"), "NORRKOPING": ("OH", "SE", "CT"), "MALMOE": ("OH", "SE", "CT"),
+    "OSLO": ("OS", "NW", "CT"), "BERGEN": ("OH", "NW", "CT"), "STAVANGER": ("OH", "NW", "CT"),
+    "HELSINKI": ("OH", "FL", "CT"), "KOTKA": ("KK", "FL", "CT"),
+    "KLAIPEDA": ("KE", "LT", "CT"), "RIGA": ("RG", "LV", "CT"), "LIEPAJA": ("LJ", "LV", "CT"),
+    "TALLINN": ("OH", "ET", "CT"), "KUNDA": ("OH", "ET", "CT"),
+    "ODESSA": ("OD", "UE", "CT"), "ODESSIA": ("OD", "UE", "CT"),
+    "NOVOROSSIYSK": ("NV", "RU", "CT"), "ST. PETERSBURG": ("OH", "RU", "CT"),
 
     # MEDITERRANEAN (RANGE: ME)
-    "SPAIN": ("SP", "ME"), "SP": ("SP", "ME"), "ES": ("SP", "ME"),
-    "ITALY": ("IT", "ME"), "IT": ("IT", "ME"),
-    "GREECE": ("GC", "ME"), "GC": ("GC", "ME"),
-    "PORTUGAL": ("PG", "ME"), "PG": ("PG", "ME"), "PT": ("PG", "ME"),
-    "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"), "TU": ("TU", "ME"), "TR": ("TU", "ME"),
-    "CYPRUS": ("CY", "ME"), "CY": ("CY", "ME"),
-    "ROMANIA": ("RM", "ME"), "RM": ("RM", "ME"), "RO": ("RM", "ME"),
-    "BULGARIA": ("BU", "ME"), "BU": ("BU", "ME"),
-    "CROATIA": ("CT", "OH"), "HR": ("CT", "OH"),
-    "SLOVENIA": ("OH", "ME"), "SI": ("OH", "ME"),
-    "CANARY ISLANDS": ("CI", "ME"),
+    "BARCELONA": ("BC", "SP", "ME"), "VALENCIA": ("VL", "SP", "ME"),
+    "ALGECIRAS": ("AR", "SP", "ME"), "ALGEDIRA": ("AR", "SP", "ME"),
+    "BILBAO": ("BI", "SP", "ME"), "VIGO": ("VO", "SP", "ME"), "SANTANDER": ("SD", "SP", "ME"),
+    "TARRAGONA": ("OH", "SP", "ME"), "CASTELLON": ("OH", "SP", "ME"), "ALICANTE": ("OH", "SP", "ME"),
+    "CADIZ": ("OH", "SP", "ME"), "GIJON": ("OH", "SP", "ME"), "HUELVA": ("OH", "SP", "ME"),
+    "GENOA": ("GE", "IT", "ME"), "GENOVA": ("GE", "IT", "ME"), "LIVORNO": ("LO", "IT", "ME"),
+    "LEGHORN": ("LN", "IT", "ME"), "NAPLES": ("NS", "IT", "ME"), "NAPOLI": ("NS", "IT", "ME"),
+    "SALERNO": ("SL", "IT", "ME"), "TRIESTE": ("TS", "IT", "ME"), "RAVENNA": ("RV", "IT", "ME"),
+    "ANCONA": ("AC", "IT", "ME"), "VENICE": ("VI", "IT", "ME"), "CIVITAVECCHIA": ("OH", "IT", "ME"),
+    "GIOIA TAURO": ("OH", "IT", "ME"), "LA SPEZIA": ("OH", "IT", "ME"),
+    "LISBON": ("LS", "PG", "ME"), "LEIXOES": ("LX", "PG", "ME"),
+    "PIRAEUS": ("PI", "GC", "ME"), "PIREAUS": ("PI", "GC", "ME"), "THESSALONIKI": ("OH", "GC", "ME"),
+    "ISTANBUL": ("IL", "TU", "ME"), "IZMIT": ("OH", "TU", "ME"), "AMBARLI": ("OH", "TU", "ME"),
+    "MARPORT": ("OH", "TU", "ME"), "IZMIR": ("OH", "TU", "ME"), "IZMAR": ("OH", "TU", "ME"),
+    "MERSIN": ("OH", "TU", "ME"), "GEBZE": ("OH", "TU", "ME"), "GEMLIK": ("OH", "TU", "ME"),
+    "LIMASSOL": ("LL", "CY", "ME"), "CONSTANTA": ("CA", "RM", "ME"), "VARNA": ("VN", "BG", "CT"),
+    "TENERIFE": ("TF", "CI", "ME"), "LAS PALMAS": ("LP", "CI", "ME"),
 
     # FAR EAST & ASIA (RANGE: FE)
-    "INDIA": ("IN", "FE"), "IN": ("IN", "FE"),
-    "CHINA": ("CH", "FE"), "CH": ("CH", "FE"), "CN": ("CH", "FE"),
-    "JAPAN": ("JP", "FE"), "JP": ("JP", "FE"),
-    "SOUTH KOREA": ("SK", "FE"), "KOREA": ("SK", "FE"), "SK": ("SK", "FE"), "KR": ("SK", "FE"),
-    "VIETNAM": ("VT", "FE"), "VT": ("VT", "FE"), "VN": ("VT", "FE"),
-    "MALAYSIA": ("MY", "FE"), "MY": ("MY", "FE"),
-    "INDONESIA": ("ID", "FE"), "ID": ("ID", "FE"),
-    "THAILAND": ("TH", "FE"), "TH": ("TH", "FE"),
-    "SINGAPORE": ("SG", "FE"), "SG": ("SG", "FE"),
-    "TAIWAN": ("TW", "FE"), "TW": ("TW", "FE"),
-    "HONG KONG": ("HK", "FE"), "HONGKONG": ("HK", "FE"), "HK": ("HK", "FE"),
-    "PAKISTAN": ("PK", "FE"), "PK": ("PK", "FE"),
-    "BANGLADESH": ("BD", "FE"), "BD": ("BD", "FE"),
-    "SRI LANKA": ("SR", "FE"), "SR": ("SR", "FE"), "LK": ("SR", "FE"),
-    "PHILIPPINES": ("PH", "FE"), "PH": ("PH", "FE"),
+    "SHANGHAI": ("SH", "CH", "FE"), "NINGBO": ("OH", "CH", "FE"), "QINGDAO": ("OH", "CH", "FE"),
+    "XIAMEN": ("OH", "CH", "FE"), "XIAMENG": ("OH", "CH", "FE"), "NANSHA": ("OH", "CH", "FE"),
+    "SHEKOU": ("OH", "CH", "FE"), "YANTIAN": ("OH", "CH", "FE"), "GUANGZHOU": ("OH", "CH", "FE"),
+    "DALIAN": ("OH", "CH", "FE"), "TIANJIN": ("OH", "CH", "FE"), "XINGANG": ("OH", "CH", "FE"),
+    "HONGKONG": ("HK", "HK", "FE"), "HONG KONG": ("HK", "HK", "FE"),
+    "BUSAN": ("BU", "SK", "FE"), "PUSAN": ("BU", "SK", "FE"), "INCHEON": ("OH", "SK", "FE"),
+    "TOKYO": ("TK", "JP", "FE"), "YOKOHAMA": ("YK", "JP", "FE"), "KOBE": ("KB", "JP", "FE"),
+    "OSAKA": ("OK", "JP", "FE"), "NAGOYA": ("NA", "JP", "FE"),
+    "SINGAPORE": ("SG", "SG", "FE"),
+    "PORT KLANG": ("OH", "MY", "FE"), "PORT KELANG": ("OH", "MY", "FE"),
+    "TANJUNG PELEPAS": ("OH", "MY", "FE"), "PENANG": ("PM", "MY", "FE"), "PASIR GUDANG": ("OH", "MY", "FE"),
+    "HO CHI MINH": ("OH", "VT", "FE"), "HAIPHONG": ("OH", "VT", "FE"),
+    "BANGKOK": ("BK", "TH", "FE"), "LAEM CHABANG": ("OH", "TH", "FE"),
+    "JAKARTA": ("JK", "ID", "FE"), "SURABAYA": ("SB", "ID", "FE"), "BELAWAN": ("OH", "ID", "FE"),
+    "MUMBAI": ("BY", "IN", "FE"), "BOMBAY": ("BY", "IN", "FE"),
+    "NHAVA SHEVA": ("OH", "IN", "FE"), "NEVA SHEVA": ("OH", "IN", "FE"),
+    "MUNDRA": ("OH", "IN", "FE"), "CHENNAI": ("MD", "IN", "FE"), "MADRAS": ("MD", "IN", "FE"),
+    "TUTICORIN": ("OH", "IN", "FE"), "VISAKHAPATNAM": ("OH", "IN", "FE"), "COCHIN": ("OH", "IN", "FE"),
+    "KOLKATA": ("OH", "IN", "FE"), "CALCUTTA": ("OH", "IN", "FE"), "ENNORE": ("OH", "IN", "FE"),
+    "KARACHI": ("KR", "PK", "FE"), "PORT QASIM": ("OH", "PK", "FE"),
+    "CHITTAGONG": ("CG", "BD", "FE"), "CHITAGONG": ("CG", "BD", "FE"),
+    "COLOMBO": ("OH", "SR", "FE"), "KAOHSIUNG": ("KA", "TW", "FE"), "KEELUNG": ("KL", "TW", "FE"),
+    "MANILA": ("ML", "PH", "FE"),
 
     # NORTH AMERICA (RANGE: NA)
-    "UNITED STATES": ("US", "NA"), "USA": ("US", "NA"), "US": ("US", "NA"),
-    "CANADA": ("CN", "NA"),
-
-    # OTHER / OCEANIA / SOUTH AMERICA / MIDDLE EAST (RANGE: OH)
-    "BRAZIL": ("BZ", "OH"), "BZ": ("BZ", "OH"), "BR": ("BZ", "OH"),
-    "ARGENTINA": ("AR", "OH"), "AR": ("AR", "OH"),
-    "AUSTRALIA": ("AU", "OH"), "AU": ("AU", "OH"),
-    "NEW ZEALAND": ("NZ", "OH"), "NZ": ("NZ", "OH"),
-    "UNITED ARAB EMIRATES": ("AE", "OH"), "UAE": ("AE", "OH"), "AE": ("AE", "OH"), "DUBAI": ("AE", "OH"),
-    "SAUDI ARABIA": ("SB", "OH"), "SB": ("SB", "OH"),
-    "JORDAN": ("JD", "OH"), "JD": ("JD", "OH"),
-    "ISRAEL": ("IL", "OH"), "IL": ("IL", "OH"),
-    "QATAR": ("OH", "OH"), "QA": ("OH", "OH")
-}
-
-# Major designated ports from code sheet
-PORT_MAP = {
-    # AFRICA
-    "LOME": ("LM", "TG", "AF"), "COTONOU": ("CU", "BN", "AF"), "ABIDJAN": ("AJ", "IV", "AF"),
-    "LAGOS": ("LG", "NG", "AF"), "TINCAN": ("LG", "NG", "AF"), "APAPA": ("OH", "NG", "AF"),
-    "LEKKI": ("OH", "NG", "AF"), "ONNE": ("OH", "NG", "AF"), "PORT HARCOURT": ("OH", "NG", "AF"),
-    "DAKAR": ("DA", "SN", "AF"), "POINTE NOIRE": ("OH", "CG", "AF"), "POINT NOIRE": ("OH", "CG", "AF"),
-    "MATADI": ("MA", "CG", "AF"), "LIBREVILLE": ("LB", "GA", "AF"), "PORT GENTIL": ("PG", "GA", "AF"),
-    "DOUALA": ("DL", "CM", "AF"), "DURBAN": ("DR", "SA", "AF"), "CAPETOWN": ("CN", "SA", "AF"),
-    "CAPE TOWN": ("CN", "SA", "AF"), "PORT ELIZABETH": ("PE", "SA", "AF"), "TEMA": ("TM", "GH", "AF"),
-    "TAKORADI": ("TD", "GH", "AF"), "DAR ES SALAAM": ("ES", "TZ", "AF"), "CONAKRY": ("CN", "GN", "AF"),
-
-    # CONTINENT EUROPE
-    "ANTWERP": ("AT", "BG", "CT"), "AMSTERDAM": ("AM", "NL", "CT"), "ROTTERDAM": ("RM", "NL", "CT"),
-    "HAMBURG": ("HM", "GR", "CT"), "BREMERHAVEN": ("BM", "GR", "CT"), "LE HAVRE": ("LH", "FR", "CT"),
-    "DUNKERQUE": ("DK", "FR", "CT"), "DUNKIRK": ("DK", "FR", "CT"), "PORT VENDRES": ("BD", "FR", "CT"),
-    "FOS SUR MER": ("OH", "FR", "CT"), "MARSEILLE": ("MS", "FR", "CT"), "ROUEN": ("RN", "FR", "CT"),
-    "GDYNIA": ("GA", "PL", "CT"), "GDANSK": ("GK", "PL", "CT"), "ZEEBRUGGE": ("ZB", "BG", "CT"),
-
-    # UK
-    "TILBURY": ("TY", "UK", "UK"), "LIVERPOOL": ("LV", "UK", "UK"), "LONDON": ("LD", "UK", "UK"),
-    "FELIXSTOWE": ("FX", "UK", "UK"), "DUBLIN": ("DU", "IR", "UK"), "BELFAST": ("BT", "IR", "UK"),
-
-    # MEDITERRANEAN
-    "BARCELONA": ("BC", "SP", "ME"), "VALENCIA": ("VL", "SP", "ME"), "ALGECIRAS": ("AR", "SP", "ME"),
-    "GENOA": ("GE", "IT", "ME"), "LIVORNO": ("LO", "IT", "ME"), "NAPLES": ("NS", "IT", "ME"),
-    "ISTANBUL": ("IL", "TU", "ME"), "IZMIT": ("OH", "TU", "ME"), "AMBARLI": ("OH", "TU", "ME"),
-    "MARPORT": ("OH", "TU", "ME"), "PIRAEUS": ("PI", "GC", "ME"), "ALEXANDRIA": ("OH", "EY", "AF"),
-
-    # FAR EAST
-    "SHANGHAI": ("SH", "CH", "FE"), "NINGBO": ("OH", "CH", "FE"), "QINGDAO": ("OH", "CH", "FE"),
-    "XIAMEN": ("OH", "CH", "FE"), "NANSHA": ("OH", "CH", "FE"), "SHEKOU": ("OH", "CH", "FE"),
-    "HONGKONG": ("HK", "HK", "FE"), "BUSAN": ("BU", "SK", "FE"), "INCHEON": ("OH", "SK", "FE"),
-    "SINGAPORE": ("SG", "SG", "FE"), "PORT KLANG": ("OH", "MY", "FE"), "PENANG": ("PM", "MY", "FE"),
-    "HO CHI MINH": ("OH", "VT", "FE"), "MUMBAI": ("BY", "IN", "FE"), "NHAVA SHEVA": ("OH", "IN", "FE"),
-    "MUNDRA": ("OH", "IN", "FE"), "CHENNAI": ("MD", "IN", "FE"), "TUTICORIN": ("OH", "IN", "FE"),
-    "VISAKHAPATNAM": ("OH", "IN", "FE"), "YOKOHAMA": ("YK", "JP", "FE"), "TOKYO": ("TK", "JP", "FE"),
-    "COLOMBO": ("OH", "SR", "FE"),
-
-    # NORTH AMERICA
     "NEW YORK": ("NY", "US", "NA"), "SAVANNAH": ("SV", "US", "NA"), "HOUSTON": ("HO", "US", "NA"),
+    "BALTIMORE": ("BE", "US", "NA"), "NORFOLK": ("NF", "US", "NA"), "NEW ORLEANS": ("NO", "US", "NA"),
+    "CHARLESTON": ("CT", "US", "NA"), "LOS ANGELES": ("LA", "US", "NA"), "LONG BEACH": ("LO", "US", "NA"),
+    "OAKLAND": ("OH", "US", "NA"), "SEATTLE": ("OH", "US", "NA"), "PHILADELPHIA": ("PH", "US", "NA"),
+    "MONTREAL": ("MT", "CN", "NA"), "TORONTO": ("TR", "CN", "NA"), "VANCOUVER": ("VC", "CN", "NA"),
+    "HALIFAX": ("HX", "US", "NA"),
 
-    # OTHER
-    "SANTOS": ("ST", "BZ", "OH"), "BUENOS AIRES": ("BO", "AR", "OH"), "JEDDAH": ("JD", "SB", "OH")
+    # OTHER / SOUTH AMERICA / OCEANIA / MIDDLE EAST (RANGE: OH)
+    "SANTOS": ("ST", "BZ", "OH"), "RIO DE JANEIRO": ("RO", "BZ", "OH"), "PARANAGUA": ("OH", "BZ", "OH"),
+    "BUENOS AIRES": ("BO", "AR", "OH"), "CALLAO": ("OH", "PU", "OH"),
+    "SYDNEY": ("SY", "AU", "OH"), "MELBOURNE": ("MB", "AU", "OH"), "BRISBANE": ("BB", "AU", "OH"),
+    "FREMANTLE": ("FM", "AU", "OH"), "AUCKLAND": ("AD", "NZ", "OH"),
+    "DUBAI": ("DB", "AE", "OH"), "JEBEL ALI": ("JB", "AE", "OH"), "JABEL ALI": ("JB", "AE", "OH"),
+    "JEDDAH": ("JD", "SB", "OH"), "DAMMAM": ("DM", "SB", "OH"),
+    "AQABA": ("AQ", "JD", "OH"), "ASHDOD": ("AS", "IL", "OH"), "HAIFA": ("HF", "IL", "OH"),
+    "BEIRUT": ("BR", "LN", "OH"), "KUWAIT": ("OH", "KU", "OH"), "DOHA": ("OH", "OH", "OH"),
+    "MESAIEED": ("OH", "AE", "OH"), "QAPCO": ("OH", "AE", "OH")
 }
+
+# Country fallback list mapping country names to official GPHA Country Code & Range
+GPHA_COUNTRY_MAP = {
+    # AFRICA (RANGE: AF)
+    "NIGERIA": ("NG", "AF"), "TOGO": ("TG", "AF"), "BENIN": ("BN", "AF"),
+    "GHANA": ("GH", "AF"), "COTE D'IVOIRE": ("IV", "AF"), "IVORY COAST": ("IV", "AF"),
+    "BURKINA FASO": ("BF", "AF"), "NIGER": ("NR", "AF"), "MALI": ("ML", "AF"),
+    "SENEGAL": ("SN", "AF"), "SOUTH AFRICA": ("SA", "AF"), "CAMEROON": ("CM", "AF"),
+    "CONGO": ("CG", "AF"), "GABON": ("GA", "AF"), "GUINEA": ("GN", "AF"),
+    "SIERRA LEONE": ("SL", "AF"), "LIBERIA": ("LB", "AF"), "MAURITANIA": ("MR", "AF"),
+    "EGYPT": ("EY", "AF"), "MOROCCO": ("MC", "AF"), "ALGERIA": ("AG", "AF"),
+    "TUNISIA": ("TS", "AF"), "LIBYA": ("LY", "AF"), "TANZANIA": ("TZ", "AF"),
+    "KENYA": ("KY", "AF"), "ANGOLA": ("OH", "AF"), "MOZAMBIQUE": ("MZ", "AF"),
+    "NAMIBIA": ("OH", "AF"), "GAMBIA": ("GM", "AF"),
+
+    # UNITED KINGDOM & IRELAND (RANGE: UK)
+    "UNITED KINGDOM": ("UK", "UK"), "IRELAND": ("IR", "UK"),
+
+    # CONTINENT EUROPE (RANGE: CT)
+    "NETHERLANDS": ("NL", "CT"), "HOLLAND": ("NL", "CT"), "BELGIUM": ("BG", "CT"),
+    "GERMANY": ("GR", "CT"), "FRANCE": ("FR", "CT"), "POLAND": ("PL", "CT"),
+    "DENMARK": ("DK", "CT"), "SWEDEN": ("SE", "CT"), "NORWAY": ("NW", "CT"),
+    "FINLAND": ("FL", "CT"), "ESTONIA": ("ET", "CT"), "LATVIA": ("LV", "CT"),
+    "LITHUANIA": ("LT", "CT"), "UKRAINE": ("UE", "CT"), "RUSSIA": ("RU", "CT"),
+
+    # MEDITERRANEAN (RANGE: ME)
+    "SPAIN": ("SP", "ME"), "ITALY": ("IT", "ME"), "GREECE": ("GC", "ME"),
+    "PORTUGAL": ("PG", "ME"), "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"),
+    "CYPRUS": ("CY", "ME"), "ROMANIA": ("RM", "ME"), "BULGARIA": ("BU", "ME"),
+    "CANARY ISLANDS": ("CI", "ME"), "SLOVENIA": ("OH", "ME"),
+
+    # FAR EAST & ASIA (RANGE: FE)
+    "INDIA": ("IN", "FE"), "CHINA": ("CH", "FE"), "JAPAN": ("JP", "FE"),
+    "SOUTH KOREA": ("SK", "FE"), "KOREA": ("SK", "FE"), "VIETNAM": ("VT", "FE"),
+    "MALAYSIA": ("MY", "FE"), "INDONESIA": ("ID", "FE"), "THAILAND": ("TH", "FE"),
+    "SINGAPORE": ("SG", "FE"), "TAIWAN": ("TW", "FE"), "HONG KONG": ("HK", "FE"),
+    "HONGKONG": ("HK", "FE"), "PAKISTAN": ("PK", "FE"), "BANGLADESH": ("BD", "FE"),
+    "SRI LANKA": ("SR", "FE"), "PHILIPPINES": ("PH", "FE"),
+
+    # NORTH AMERICA (RANGE: NA)
+    "UNITED STATES": ("US", "NA"), "USA": ("US", "NA"), "CANADA": ("CN", "NA"),
+
+    # OTHER / SOUTH AMERICA / MIDDLE EAST / OCEANIA (RANGE: OH)
+    "BRAZIL": ("BZ", "OH"), "ARGENTINA": ("AR", "OH"), "CHILE": ("CL", "OH"),
+    "PERU": ("PU", "OH"), "AUSTRALIA": ("AU", "OH"), "NEW ZEALAND": ("NZ", "OH"),
+    "UNITED ARAB EMIRATES": ("AE", "OH"), "UAE": ("AE", "OH"), "DUBAI": ("AE", "OH"),
+    "SAUDI ARABIA": ("SB", "OH"), "JORDAN": ("JD", "OH"), "ISRAEL": ("IL", "OH")
+}
+
+# ISO prefix translator to Ghana GPHA country codes
+ISO_PREFIX_MAP = {
+    "NG": ("NG", "AF"), "TG": ("TG", "AF"), "BN": ("BN", "AF"), "BJ": ("BN", "AF"),
+    "IV": ("IV", "AF"), "CI": ("IV", "AF"), "SN": ("SN", "AF"), "ZA": ("SA", "AF"),
+    "SA": ("SA", "AF"), "GH": ("GH", "AF"), "CM": ("CM", "AF"), "MR": ("MR", "AF"),
+    "EY": ("EY", "AF"), "EG": ("EY", "AF"), "MC": ("MC", "AF"), "MA": ("MC", "AF"),
+    "UK": ("UK", "UK"), "GB": ("UK", "UK"), "IR": ("IR", "UK"), "IE": ("IR", "UK"),
+    "NL": ("NL", "CT"), "BG": ("BG", "CT"), "BE": ("BG", "CT"), "GR": ("GR", "CT"),
+    "DE": ("GR", "CT"), "FR": ("FR", "CT"), "PL": ("PL", "CT"), "DK": ("DK", "CT"),
+    "SE": ("SE", "CT"), "NW": ("NW", "CT"), "NO": ("NW", "CT"), "FL": ("FL", "CT"),
+    "SP": ("SP", "ME"), "ES": ("SP", "ME"), "IT": ("IT", "ME"), "GC": ("GC", "ME"),
+    "PG": ("PG", "ME"), "PT": ("PG", "ME"), "TU": ("TU", "ME"), "TR": ("TU", "ME"),
+    "CH": ("CH", "FE"), "CN": ("CH", "FE"), "IN": ("IN", "FE"), "JP": ("JP", "FE"),
+    "SK": ("SK", "FE"), "KR": ("SK", "FE"), "VT": ("VT", "FE"), "VN": ("VT", "FE"),
+    "MY": ("MY", "FE"), "SG": ("SG", "FE"), "SR": ("SR", "FE"), "LK": ("SR", "FE"),
+    "US": ("US", "NA"), "BZ": ("BZ", "OH"), "BR": ("BZ", "OH"), "AE": ("AE", "OH")
+}
+
+# Sort port keys by length (longest first) to prevent sub-string collision
+SORTED_PORT_MAP = sorted(FULL_PORT_MAP.items(), key=lambda x: len(x[0]), reverse=True)
 
 # ==========================================
-# 2. STRICT DISCHARGE PORT & COUNTRY RESOLVER
+# 2. RESOLVER ENGINE (WORD BOUNDARIES ENFORCED)
 # ==========================================
 
 SEARCH_CACHE = {}
@@ -211,32 +262,27 @@ def fast_web_lookup(term: str) -> str:
     return ""
 
 def resolve_port_info(pod_text: str, use_web_search: bool = True) -> tuple:
-    """Strictly parses the Port of Discharge text to extract PORT, CTRY, and RANGE accurately."""
     clean = pod_text.upper().strip()
-    # Remove leading noise
     clean = re.sub(r"^(?:FINAL DISCH|VESSEL DISCH|PORT OF DISCHARGE|PLACE OF DELIVERY|FINAL DESTINATION|DEL|TO)\s*[:\.]?\s*", "", clean)
 
-    # 1. Check for exact port name in PORT_MAP first
-    for p_name, p_val in PORT_MAP.items():
-        # Match whole port word or pattern
+    # 1. Exact Port Matching (Longest word first with boundary check)
+    for p_name, p_val in SORTED_PORT_MAP:
         if re.search(rf"\b{re.escape(p_name)}\b", clean):
             return p_val
 
-    # 2. Check for ISO Prefix pattern like "CN-NANSHA" or "ZA-DURBAN" or "IN-MUNDRA"
-    iso_prefix_m = re.search(r"\b([A-Z]{2})-([A-Z\s]+)\b", clean)
-    if iso_prefix_m:
-        iso_code = iso_prefix_m.group(1)
-        port_part = iso_prefix_m.group(2).strip()
-        # Look up port part in PORT_MAP
-        for p_name, p_val in PORT_MAP.items():
-            if p_name in port_part:
+    # 2. ISO Prefix Check (e.g. "ZA-DURBAN", "CN-NANSHA", "IN-MUNDRA")
+    iso_m = re.search(r"\b([A-Z]{2})-([A-Z0-9\s]+)\b", clean)
+    if iso_m:
+        iso_code = iso_m.group(1)
+        port_part = iso_m.group(2).strip()
+        for p_name, p_val in SORTED_PORT_MAP:
+            if re.search(rf"\b{re.escape(p_name)}\b", port_part):
                 return p_val
-        # If port unlisted, map ISO code to GPHA country code
-        if iso_code in GPHA_COUNTRY_MAP:
-            c_code, r_code = GPHA_COUNTRY_MAP[iso_code]
+        if iso_code in ISO_PREFIX_MAP:
+            c_code, r_code = ISO_PREFIX_MAP[iso_code]
             return ("OH", c_code, r_code)
 
-    # 3. Check for Country name in the Discharge text (e.g., "Izmit, Turkey" or "San Pedro, Ivory Coast")
+    # 3. Country Matching in the POD text (Word boundaries prevent partial collisions)
     for c_name, (c_code, r_code) in GPHA_COUNTRY_MAP.items():
         if re.search(rf"\b{re.escape(c_name)}\b", clean):
             return ("OH", c_code, r_code)
@@ -252,7 +298,7 @@ def resolve_port_info(pod_text: str, use_web_search: bool = True) -> tuple:
     return ("OH", "OH", "AF")
 
 # ==========================================
-# 3. SHIP NAME EXTRACTOR (ZERO HARDCODING)
+# 3. SHIP NAME EXTRACTOR
 # ==========================================
 
 HEADER_NOISE_PHRASES = [
@@ -409,14 +455,13 @@ def parse_num(val_str: str) -> float:
         return 0.0
 
 # ==========================================
-# 5. CARRIER PARSERS (STRICT SEQUENTIAL ORDER)
+# 5. ZERO-DROP CARRIER PARSERS
 # ==========================================
 
 def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
     ship = ship_name
 
-    # Preserve EXACT appearance order in document (no set())
     bl_matches = []
     for m in re.finditer(r"\b(ONEY[A-Z0-9]{8,15}|[A-Z]{4}\d{8,12})\b", pdf_text):
         b = m.group(1)
@@ -431,7 +476,6 @@ def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
         if not chunk or is_empty_equipment(chunk):
             continue
 
-        # Extract strictly from destination / discharge line
         dest_m = re.search(r"(?:Final destination|5b\.Port of discharge|Port of discharge)[^\n]*\n[^\n]*?\s*([A-Za-z0-9\s-]+?)(?:\s{2,}|\n|$)", chunk, re.IGNORECASE)
         pod_raw = dest_m.group(1).strip().upper() if dest_m else ""
         if not pod_raw:
@@ -443,8 +487,6 @@ def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
         wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\(|\n)", chunk, re.IGNORECASE)
         val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
         tonnage = round(val if (0.0 < val < 500.0) else val / 1000.0, 2)
-        if tonnage <= 0.0:
-            continue
 
         container_groups = re.findall(r"(\d+)\s*X\s*(\d{2}[A-Za-z0-9]+)", chunk, re.IGNORECASE)
         desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Za-z\s\(\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
@@ -489,8 +531,6 @@ def parse_pil(pdf_text: str, ship_name: str, use_web_search: bool = True):
             
             wgt_m = re.search(r"1\)\s*([\d\s\.,]+)\s*KGS", chunk, re.IGNORECASE)
             raw_w = parse_num(wgt_m.group(1)) if wgt_m else 0.0
-            if raw_w <= 0.0:
-                continue
             tonnage = round(raw_w / 1000.0, 2)
 
             cont_types = re.findall(r"\((?:CY/CY|FCL/FCL)\)\s*-\s*([A-Z0-9]+)", chunk)
@@ -532,7 +572,9 @@ def parse_goldstar(pdf_text: str, ship_name: str, use_web_search: bool = True):
             cont_type = normalize_container(qty_m.group(2))
             tonnage = round(parse_num(qty_m.group(3)) / 1000.0, 2)
         else:
-            continue
+            cont_qty = 1
+            cont_type = "20D"
+            tonnage = 0.0
 
         desc_m = re.search(r"CONTAINERS S\.L\.A\.C\.\s*\n\s*([A-Z\s\.]+)", chunk)
         desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
@@ -560,8 +602,6 @@ def parse_arkas(pdf_text: str, ship_name: str, use_web_search: bool = True):
 
         wgt_m = re.search(r"BL GROSS WEIGHT\s*:\s*([\d\s\.,]+)", chunk, re.IGNORECASE)
         tonnage = round(parse_num(wgt_m.group(1)) / 1000.0, 2) if wgt_m else 0.0
-        if tonnage <= 0.0:
-            continue
 
         c_match = re.search(r"BL TOTAL CONTAINERS:\s*(\d+)\s*\n\s*\d+\*(\d{2}\s*[A-Z]+)", chunk)
         if c_match:
@@ -592,15 +632,12 @@ def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
             if is_empty_equipment(chunk):
                 continue
 
-            # Look strictly at PORT OF DISCHARGE / PLACE OF DELIVERY
             pod_m = re.search(r"(?:PORT OF DISCHARGE|PLACE OF DELIVERY)\s*:\s*([A-Z\s]+)", chunk, re.IGNORECASE)
             pod_raw = pod_m.group(1).strip().upper() if pod_m else "APAPA"
             port_info = resolve_port_info(pod_raw, use_web_search)
 
             wgt_m = re.search(r"GROSS WEIGHT\s*[：:]\s*([\d\s\.,]+)\s*KG", chunk, re.IGNORECASE)
             tonnage = round(parse_num(wgt_m.group(1)) / 1000.0, 2) if wgt_m else 0.0
-            if tonnage <= 0.0:
-                continue
 
             cont_lines = re.findall(r"\b([0-9]{2}[A-Z]{2})\b[^\n]*\bFCL/FCL\b", chunk)
             cont_qty = len(cont_lines) if cont_lines else 1
@@ -624,8 +661,6 @@ def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
 
             wgt_m = re.search(r"(\d+\.\d{2})\s*KG", chunk)
             tonnage = round(parse_num(wgt_m.group(1)) / 1000.0, 2) if wgt_m else 0.0
-            if tonnage <= 0.0:
-                continue
 
             c_match = re.search(r"(\d+)\s*CONTAINER\(S\)", chunk)
             cont_qty = int(c_match.group(1)) if c_match else 1
@@ -647,7 +682,6 @@ def parse_maersk(pdf_text: str, ship_name: str, use_web_search: bool = True):
     ship = ship_name
     carrier, agent = ("CMA CGM", "CMA CGM GH. LTD.") if "CMA CGM" in ship else ("MAERSK LINE", "MAERSK GH. LTD.")
 
-    # Strictly preserve document order
     bl_chunks = re.split(r"(?:\n|^)\s*(?=[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL))", pdf_text)
     for chunk in bl_chunks:
         if not ("MAEU" in chunk or "WAYBILL" in chunk):
@@ -655,7 +689,6 @@ def parse_maersk(pdf_text: str, ship_name: str, use_web_search: bool = True):
         if is_empty_equipment(chunk):
             continue
 
-        # Strictly isolate Port of Discharge field (ignore Shipper and POL)
         pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del)\s*:\s*([^\n]+)", chunk, re.IGNORECASE)
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
         port_info = resolve_port_info(pod_raw, use_web_search)
@@ -692,19 +725,18 @@ def parse_maersk(pdf_text: str, ship_name: str, use_web_search: bool = True):
 
         comm = classify_commodity(desc, hs, use_web_search)
 
-        if tonnage > 0:
-            rows.append({
-                "SHIP": ship, "SHIP LINE": carrier, "AGENT": agent,
-                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
-                "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
-            })
+        # Zero-Drop Guarantee: Always capture the row even if tonnage is zero
+        rows.append({
+            "SHIP": ship, "SHIP LINE": carrier, "AGENT": agent,
+            "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
+            "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
+        })
     return rows
 
 def parse_ael(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
     ship = ship_name
 
-    # Preserve exact order
     bl_chunks = re.split(r"(?:\n|^)(?=TEMPOV\w+|TEMDKR\w+)", pdf_text)
     for chunk in bl_chunks[1:]:
         if is_empty_equipment(chunk):
@@ -732,12 +764,11 @@ def parse_ael(pdf_text: str, ship_name: str, use_web_search: bool = True):
         else:
             comm = "LPN"
 
-        if tonnage > 0:
-            rows.append({
-                "SHIP": ship, "SHIP LINE": "AFRICA EXPRESS LINE", "AGENT": "EOLIS GH. LTD",
-                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
-                "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
-            })
+        rows.append({
+            "SHIP": ship, "SHIP LINE": "AFRICA EXPRESS LINE", "AGENT": "EOLIS GH. LTD",
+            "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
+            "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": f"{tonnage:.2f}"
+        })
     return rows
 
 # ==========================================
@@ -790,8 +821,6 @@ if uploaded_files:
             total_pages = len(doc)
             pages_text = []
 
-            has_digital_text = any(len(p.get_text("text").strip()) > 50 for p in doc[:3])
-
             for p_idx in range(total_pages):
                 status_text.text(f"Reading page {p_idx + 1} of {total_pages} ({uploaded_file.name})...")
                 page = doc[p_idx]
@@ -799,7 +828,7 @@ if uploaded_files:
                     page.set_rotation(rotation_degrees)
                 
                 txt = page.get_text("text")
-                if not has_digital_text and len(txt.strip()) < 30:
+                if len(txt.strip()) < 30:
                     pix = page.get_pixmap(dpi=150)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                     try:
@@ -847,7 +876,7 @@ if uploaded_files:
             col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
             df = df[col_order]
 
-            st.success(f" Successfully processed and coded {len(df)} manifest rows in chronological order!")
+            st.success(f" Successfully processed {len(df)} manifest rows in chronological order without omission!")
             st.subheader("Interactive Review Screen (Edit if needed)")
             edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
