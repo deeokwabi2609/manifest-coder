@@ -315,7 +315,7 @@ def is_header_noise(text: str) -> bool:
 def clean_vessel_name(raw_name: str) -> str:
     name = raw_name.strip()
     name = re.sub(r"^(?:1\.\s*)?(?:NAME\s+OF\s+(?:VESSEL|SHIP)|VESSEL\s+NAME|SHIP\s+NAME|VESSEL|SHIP)\s*[:\.]?\s*", "", name, flags=re.IGNORECASE)
-    name = re.sub(r"\([A-Z0-9]+\)", "", name)
+    name = re.sub(r"\\([A-Z0-9]+\\)", "", name)
     name = re.sub(r"\b\d{7}\b.*", "", name)
     name = re.sub(r"\b[A-Z0-9]{2,10}(?:/[EWNS])?\b\s*(?:\d+)?$", "", name)
     for noise in ["VOYAGE", "VOY", "IMO", "FLAG", "PAGE", "OUTWARD", "INBOUND", "NATIONALITY"]:
@@ -439,7 +439,7 @@ def is_empty_equipment(text: str) -> bool:
         r"\b(?:CONTAINER|CNTR|TANK)\s+(?:STC\s+)?EMPTY\b",
         r"\bMT\s+CONTAINER\b",
         r"\bEMPTY\s+WITH\s+RESIDUE\b",
-        r"\bRESIDUE\s*\(SOC\)\b",
+        r"\bRESIDUE\s*\\(SOC\\)\b",
         r"\bEMPTY\s+SOC\b"
     ]
     for pat in empty_equipment_patterns:
@@ -453,6 +453,96 @@ def parse_num(val_str: str) -> float:
         return float(clean)
     except Exception:
         return 0.0
+
+
+# ==========================================
+# 4.5. SMART AUTO-ROTATION & PAGE TEXT EXTRACTOR
+# ==========================================
+
+MANIFEST_KEYWORDS = [
+    "MAERSK", "MAEU", "MSK", "SUDU", "SEAU", "MRKU", "PONU", "MBL",
+    "WAYBILL", "VESSEL", "CONTAINER", "DISCHARGE", "GROSS WEIGHT",
+    "KGS", "PORT", "SHIPPER", "CONSIGNEE", "BILL OF LADING", "CARGO",
+    "DESCRIPTION", "PACKAGE", "MANIFEST", "SEAL", "COMMODITY", "TONNAGE", "DESTINATION"
+]
+
+def score_manifest_quality(text: str) -> int:
+    if not text:
+        return 0
+    t_upper = text.upper()
+    score = 0
+    for kw in MANIFEST_KEYWORDS:
+        score += len(re.findall(rf"\b{re.escape(kw)}\b", t_upper))
+    return score
+
+def extract_page_text_smart(page, rotation_mode_setting: str) -> str:
+    """
+    Extract text from a PyMuPDF page with auto-orientation detection for rotated or sideways pages.
+    Supports:
+    - '⚡ Auto-Detect & Upright (Recommended)'
+    - '0° (Normal / Upright)'
+    - '90° Clockwise (Sideways / Landscape)'
+    - '180° (Upside Down)'
+    - '270° (Counter-Clockwise)'
+    """
+    if rotation_mode_setting != "⚡ Auto-Detect & Upright (Recommended)":
+        rotation_degrees = {
+            "0° (Normal / Upright)": 0,
+            "90° Clockwise (Sideways / Landscape)": 90,
+            "180° (Upside Down)": 180,
+            "270° (Counter-Clockwise)": 270
+        }.get(rotation_mode_setting, 0)
+        
+        if rotation_degrees != 0:
+            page.set_rotation(rotation_degrees)
+        
+        txt = page.get_text("text", sort=True)
+        if len(txt.strip()) < 30:
+            pix = page.get_pixmap(dpi=150)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            try:
+                txt = pytesseract.image_to_string(img)
+            except Exception:
+                pass
+        return txt
+
+    # AUTO-DETECT MODE (Default):
+    # 1. Try native PDF vector text at default orientation
+    txt_0 = page.get_text("text", sort=True)
+    score_0 = score_manifest_quality(txt_0)
+    
+    if score_0 >= 3 and len(txt_0.strip()) > 50:
+        return txt_0
+
+    # 2. Test rotation angles [0, 90, 180, 270] to find highest manifest text quality
+    best_txt = txt_0
+    best_score = score_0
+    best_angle = 0
+    
+    for angle in [0, 90, 180, 270]:
+        page.set_rotation(angle)
+        t = page.get_text("text", sort=True)
+        s = score_manifest_quality(t)
+        
+        if len(t.strip()) < 30:
+            pix = page.get_pixmap(dpi=150)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            try:
+                ocr_t = pytesseract.image_to_string(img)
+                ocr_s = score_manifest_quality(ocr_t)
+                if ocr_s > s:
+                    t, s = ocr_t, ocr_s
+            except Exception:
+                pass
+                
+        if s > best_score:
+            best_score = s
+            best_txt = t
+            best_angle = angle
+            
+    page.set_rotation(best_angle)
+    return best_txt
+
 
 # ==========================================
 # 5. ZERO-DROP CARRIER PARSERS
@@ -484,12 +574,12 @@ def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
 
         port_info = resolve_port_info(pod_raw, use_web_search)
 
-        wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\(|\n)", chunk, re.IGNORECASE)
+        wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\\(|\n)", chunk, re.IGNORECASE)
         val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
         tonnage = round(val if (0.0 < val < 500.0) else val / 1000.0, 2)
 
         container_groups = re.findall(r"(\d+)\s*X\s*(\d{2}[A-Za-z0-9]+)", chunk, re.IGNORECASE)
-        desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Za-z\s\(\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
+        desc_m = re.search(r"(?:SAID TO CONTAIN:\s*(?:STC\s+)?|\d+\s+PKGS\s+)([A-Za-z\s\(\\)]+?)(?:CN>|HS CODE|FORM M|\n\s*\d+\))", chunk, re.IGNORECASE)
         desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
         comm = classify_commodity(desc, use_web_search=use_web_search)
 
@@ -504,7 +594,7 @@ def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
                     "CONTYPE": normalize_container(sz_str), "CONTQTY": q_val, "COMMODITY": comm, "TONNAGES": f"{c_tonnage:.2f}"
                 })
         else:
-            cont_tags = re.findall(r"\(CN\)\s+([A-Z0-9]+)", chunk)
+            cont_tags = re.findall(r"\\(CN\\)\s+([A-Z0-9]+)", chunk)
             cont_qty = len(cont_tags) if cont_tags else 1
             cont_type = "40D" if "40" in chunk else "20D"
             rows.append({
@@ -533,7 +623,7 @@ def parse_pil(pdf_text: str, ship_name: str, use_web_search: bool = True):
             raw_w = parse_num(wgt_m.group(1)) if wgt_m else 0.0
             tonnage = round(raw_w / 1000.0, 2)
 
-            cont_types = re.findall(r"\((?:CY/CY|FCL/FCL)\)\s*-\s*([A-Z0-9]+)", chunk)
+            cont_types = re.findall(r"\\((?:CY/CY|FCL/FCL)\\)\s*-\s*([A-Z0-9]+)", chunk)
             if cont_types:
                 cont_type = normalize_container(cont_types[0])
                 cont_qty = len(cont_types)
@@ -542,7 +632,7 @@ def parse_pil(pdf_text: str, ship_name: str, use_web_search: bool = True):
                 cont_qty = int(qty_m.group(1)) if qty_m else 1
                 cont_type = normalize_container(qty_m.group(2)) if qty_m else "20D"
 
-            desc_m = re.search(r"(?:SAID TO CONTAIN:|CONTAINER\(S\)\s+SAID\s+TO\s+CONTAIN:)\s*([^\n]+)", chunk, re.IGNORECASE)
+            desc_m = re.search(r"(?:SAID TO CONTAIN:|CONTAINER\\(S\\)\s+SAID\s+TO\s+CONTAIN:)\s*([^\n]+)", chunk, re.IGNORECASE)
             desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
             comm = classify_commodity(desc, use_web_search=use_web_search)
 
@@ -643,7 +733,7 @@ def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
             cont_qty = len(cont_lines) if cont_lines else 1
             cont_type = normalize_container(cont_lines[0]) if cont_lines else "20D"
 
-            desc_m = re.search(r"DESCRIPTION OF GOODS\s*\n\s*([A-Z0-9\s\(\)\.,-]+?)(?:GROSS WEIGHT|FORM M|HS CODE|\n\n)", chunk, re.IGNORECASE)
+            desc_m = re.search(r"DESCRIPTION OF GOODS\s*\n\s*([A-Z0-9\s\\(\\)\.,-]+?)(?:GROSS WEIGHT|FORM M|HS CODE|\n\n)", chunk, re.IGNORECASE)
             desc = desc_m.group(1).strip() if desc_m else "GENERAL CARGO"
             comm = classify_commodity(desc, use_web_search=use_web_search)
 
@@ -662,7 +752,7 @@ def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
             wgt_m = re.search(r"(\d+\.\d{2})\s*KG", chunk)
             tonnage = round(parse_num(wgt_m.group(1)) / 1000.0, 2) if wgt_m else 0.0
 
-            c_match = re.search(r"(\d+)\s*CONTAINER\(S\)", chunk)
+            c_match = re.search(r"(\d+)\s*CONTAINER\\(S\\)", chunk)
             cont_qty = int(c_match.group(1)) if c_match else 1
             cont_type = "40D"
 
@@ -680,52 +770,83 @@ def parse_cosco(pdf_text: str, ship_name: str, use_web_search: bool = True):
 def parse_maersk(pdf_text: str, ship_name: str, use_web_search: bool = True):
     rows = []
     ship = ship_name
-    carrier, agent = ("CMA CGM", "CMA CGM GH. LTD.") if "CMA CGM" in ship else ("MAERSK LINE", "MAERSK GH. LTD.")
+    carrier, agent = ("CMA CGM", "CMA CGM GH. LTD.") if "CMA CGM" in ship.upper() else ("MAERSK LINE", "MAERSK GH. LTD.")
 
-    bl_chunks = re.split(r"(?:\n|^)\s*(?=[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL))", pdf_text)
+    # Flexible splitting on B/L boundaries supporting WAYBILL, BILL OF LADING, B/L, BOOKING, MAEU, MSK, SUDU, SEAU, MRKU, PONU, MBL, CMAU
+    bl_chunks = re.split(
+        r"(?:\n|^)\s*(?=(?:WAYBILL|BILL OF LADING|B/L\s+NO|BOOKING|MAEU|MSK|SUDU|SEAU|MRKU|PONU|MBL|CMAU))",
+        pdf_text, flags=re.IGNORECASE
+    )
+
+    if len(bl_chunks) <= 1:
+        bl_chunks = re.split(r"\n{2,}(?=[A-Z0-9]{8,12}\b|\b(?:WAYBILL|MAEU|MSK|SUDU|SEAU)\b)", pdf_text)
+
     for chunk in bl_chunks:
-        if not ("MAEU" in chunk or "WAYBILL" in chunk):
+        if not chunk.strip():
             continue
+        if not any(k in chunk.upper() for k in ["MAEU", "MSK", "SUDU", "SEAU", "MRKU", "PONU", "MBL", "CMAU", "WAYBILL", "BILL OF LADING", "B/L", "CONTAINER", "KGS", "GROSS WEIGHT", "DISCHARGE", "PORT", "PACKAGE", "BALES", "BAGS", "CARTONS"]):
+            continue
+
         if is_empty_equipment(chunk):
             continue
 
-        pod_m = re.search(r"(?:Final Disch|Vessel Disch|Del)\s*:\s*([^\n]+)", chunk, re.IGNORECASE)
-        pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
+        # 1. Port of Discharge (POD)
+        pod_m = re.search(r"\b(?:Final Disch|Vessel Disch|Port of Discharge|Place of Delivery|Discharge Port|POD|Destination|Del|To)\b\s*[:\.]?\s*([^\n,]+)", chunk, re.IGNORECASE)
+        if pod_m:
+            pod_raw = pod_m.group(1).strip().upper()
+        else:
+            gen_pod = re.search(r"(?:Port of Discharge|Final Destination)\s*[:\.]?\s*([^\n]+)", pdf_text, re.IGNORECASE)
+            pod_raw = gen_pod.group(1).strip().upper() if gen_pod else "LOME"
+
         port_info = resolve_port_info(pod_raw, use_web_search)
 
-        cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)[^\n]*)", chunk, re.IGNORECASE)
+        # 2. Container Type & Quantity
+        cont_matches = re.findall(r"(\d+)\s*X\s*(\d{2}\s*(?:DRY|REEF|OPEN|HC|HR|HIGH|CUBE|ST|GP|RH|RF|RC|OT|FL)[^\n]*)", chunk, re.IGNORECASE)
         cont_type = "40D"
         cont_qty = 1
+
         if cont_matches:
             cont_qty = int(cont_matches[0][0])
             cont_type = normalize_container(cont_matches[0][1])
+        else:
+            sz_m = re.search(r"\b(40RH|40RA|40RC|45R|40R|40HR|20R|20RF|40HC|40HQ|40ST|40D|20D|20ST|20GP|40'|20'|40FT|20FT)\b", chunk, re.IGNORECASE)
+            if sz_m:
+                cont_type = normalize_container(sz_m.group(1))
+            qty_m = re.search(r"(\d+)\s*(?:CONTAINER|CNTR|UNIT|PKGS)", chunk, re.IGNORECASE)
+            if qty_m:
+                cont_qty = int(qty_m.group(1))
 
+        # 3. Tonnage Calculation
         cleaned = re.sub(r"Tare\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
-        explicit_totals = re.findall(r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|TOTAL\s+CARGO\s+GROSS\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT|MTS)", cleaned, re.IGNORECASE)
+        explicit_totals = re.findall(r"(?:TOTAL\s+GROSS\s+WEIGHT|TOTAL\s+GR\.?\s*WT\.?|TOTAL\s+G\.?W\.?|TOTAL\s+CARGO\s+GROSS\s+WEIGHT|GROSS\s+WEIGHT|TOTAL\s+WEIGHT)\s*[:\.]?\s*([\d\s\.,]+)\s*(?:KGS|KG|MT|MTS)", cleaned, re.IGNORECASE)
+
         if explicit_totals:
             val = parse_num(explicit_totals[0])
-            tonnage = round(val / 1000.0 if val > 500 else val, 2)
+            tonnage = round(val / 1000.0 if val > 100 else val, 2)
         else:
             col_totals = re.findall(r"(?:^|\n)\s*([\d\.,]+)\s*KGS\s*\n\s*(?:Basic Ocean|Container Protect|Inland Haulage|Additional Import|Storage Export|Inspection Fee|Demurrage|Detention|Electronic Cargo|Terminal Handling|Port Additionals|Import Service|Documentation fee|Verified Gross Mass|Rollable Compensation|3rd Party)", cleaned, re.IGNORECASE)
             if col_totals:
                 val = parse_num(col_totals[0])
-                tonnage = round(val / 1000.0 if val > 500 else val, 2)
+                tonnage = round(val / 1000.0 if val > 100 else val, 2)
             else:
-                item_matches = re.findall(r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES|ROLLS)\s+([\d\s\.,]+)\s*KGS", cleaned, re.IGNORECASE)
-                valid_nums = [parse_num(w) for w in item_matches if parse_num(w) > 500]
+                item_matches = re.findall(r"(?:BALES|BAGS|PACKAGES|CARTONS|UNITS|PIECES|COLIS|PKGS|PACKAGE|SACKS|CARTON|BALE|PLTS|PALLET|PALLETS|CTNS|BOXES|ROLLS)\s+([\d\s\.,]+)\s*(?:KGS|KG|MTS|MT)", cleaned, re.IGNORECASE)
+                valid_nums = [parse_num(w) for w in item_matches if parse_num(w) > 50]
                 if valid_nums:
                     tonnage = round(sum(valid_nums) / 1000.0 if cont_qty > 1 and len(valid_nums) > 1 else max(valid_nums) / 1000.0, 2)
                 else:
-                    tonnage = 0.0
+                    num_kgs = re.findall(r"\b([\d\.,]{3,10})\s*(?:KGS|KG)\b", cleaned, re.IGNORECASE)
+                    valid_kgs = [parse_num(x) for x in num_kgs if parse_num(x) > 10]
+                    tonnage = round(max(valid_kgs) / 1000.0, 2) if valid_kgs else 0.0
 
+        # 4. Commodity & HS Code
         hs_m = re.search(r"HS\s*(?:Code|CODE)?\s*[:\.]?\s*(\d{4,10})", chunk)
         hs = hs_m.group(1) if hs_m else ""
-        desc_m = re.search(r"Description of goods\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|\n[A-Z0-9]{7,12}|$)", chunk, re.IGNORECASE)
-        desc = desc_m.group(1).strip() if desc_m else ""
+
+        desc_m = re.search(r"(?:Description of goods|SAID TO CONTAIN|DESCRIPTION)\s*[:\.]?\s*([\s\S]+?)(?:Shipper Provided|Basic Ocean|Container Protect|HS CODE|TOTAL|\n[A-Z0-9]{7,12}|$)", chunk, re.IGNORECASE)
+        desc = desc_m.group(1).strip() if desc_m else chunk[:300]
 
         comm = classify_commodity(desc, hs, use_web_search)
 
-        # Zero-Drop Guarantee: Always capture the row even if tonnage is zero
         rows.append({
             "SHIP": ship, "SHIP LINE": carrier, "AGENT": agent,
             "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
@@ -788,18 +909,12 @@ with col1:
 
 with col2:
     rotation_option = st.selectbox("Document Orientation / Rotation", [
+        "⚡ Auto-Detect & Upright (Recommended)",
         "0° (Normal / Upright)",
         "90° Clockwise (Sideways / Landscape)",
         "180° (Upside Down)",
         "270° (Counter-Clockwise)"
     ], index=0)
-    
-    rotation_degrees = {
-        "0° (Normal / Upright)": 0,
-        "90° Clockwise (Sideways / Landscape)": 90,
-        "180° (Upside Down)": 180,
-        "270° (Counter-Clockwise)": 270
-    }[rotation_option]
 
 with col3:
     enable_web_search = st.checkbox("🌐 Enable Web Search (Ports & Commodities)", value=True)
@@ -824,17 +939,7 @@ if uploaded_files:
             for p_idx in range(total_pages):
                 status_text.text(f"Reading page {p_idx + 1} of {total_pages} ({uploaded_file.name})...")
                 page = doc[p_idx]
-                if rotation_degrees != 0:
-                    page.set_rotation(rotation_degrees)
-                
-                txt = page.get_text("text")
-                if len(txt.strip()) < 30:
-                    pix = page.get_pixmap(dpi=150)
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    try:
-                        txt = pytesseract.image_to_string(img)
-                    except Exception:
-                        pass
+                txt = extract_page_text_smart(page, rotation_option)
                 pages_text.append(txt)
 
             full_text = "\n".join(pages_text)
@@ -859,6 +964,8 @@ if uploaded_files:
                 parsed = parse_cosco(full_text, detected_ship, enable_web_search)
             elif "EOLIS" in full_text or "AFRICA EXPRESS" in full_text or "TEMPOV" in full_text:
                 parsed = parse_ael(full_text, detected_ship, enable_web_search)
+            elif any(k in full_text.upper() for k in ["MAERSK", "MAEU", "MSK", "SEALAND", "SAFMARINE", "HAMBURG", "CMA CGM", "WAYBILL", "APMM"]):
+                parsed = parse_maersk(full_text, detected_ship, enable_web_search)
             else:
                 parsed = parse_maersk(full_text, detected_ship, enable_web_search)
 
