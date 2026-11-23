@@ -1393,4 +1393,4 @@ if uploaded_files:
             st.error(
                 "No valid cargo rows were found. Check the raw text preview, "
                 "try the manual rotation override, and confirm that Tesseract "
-                "OCR is installed."
+                "OCR is installed.")
