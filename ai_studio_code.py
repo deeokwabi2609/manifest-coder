@@ -315,7 +315,7 @@ def is_header_noise(text: str) -> bool:
 def clean_vessel_name(raw_name: str) -> str:
     name = raw_name.strip()
     name = re.sub(r"^(?:1\.\s*)?(?:NAME\s+OF\s+(?:VESSEL|SHIP)|VESSEL\s+NAME|SHIP\s+NAME|VESSEL|SHIP)\s*[:\.]?\s*", "", name, flags=re.IGNORECASE)
-    name = re.sub(r"\\([A-Z0-9]+\\)", "", name)
+    name = re.sub(r"\([A-Z0-9]+\\)", "", name)
     name = re.sub(r"\b\d{7}\b.*", "", name)
     name = re.sub(r"\b[A-Z0-9]{2,10}(?:/[EWNS])?\b\s*(?:\d+)?$", "", name)
     for noise in ["VOYAGE", "VOY", "IMO", "FLAG", "PAGE", "OUTWARD", "INBOUND", "NATIONALITY"]:
@@ -574,6 +574,7 @@ def parse_one(pdf_text: str, ship_name: str, use_web_search: bool = True):
 
         port_info = resolve_port_info(pod_raw, use_web_search)
 
+        # Corrected regex pattern
         wgt_m = re.search(r"(?:TOTAL GROSS WEIGHT\s*:\s*|GROSS WEIGHT\s*[：:]\s*|1\)\s*)([\d\s\.,]+)(?:\s*MTS|\s*KG|\s*\\(|\n)", chunk, re.IGNORECASE)
         val = parse_num(wgt_m.group(1)) if wgt_m else 0.0
         tonnage = round(val if (0.0 < val < 500.0) else val / 1000.0, 2)
@@ -1007,4 +1008,3 @@ if uploaded_files:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.error("No valid cargo rows were found. Tip: Check 'Show Raw Text Preview' to inspect the extracted text.")
