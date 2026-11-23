@@ -18,7 +18,7 @@ def check_password():
     def password_entered():
         # Prefer Streamlit secrets. For local testing only, you can add
         # APP_PASSWORD to .streamlit/secrets.toml.
-        expected_password = st.secrets.get("APP_PASSWORD", "CHANGE_THIS_PASSWORD")
+        expected_password = st.secrets.get("APP_PASSWORD", "GSA@123")
 
         if st.session_state["password"] == expected_password:
             st.session_state["password_correct"] = True
