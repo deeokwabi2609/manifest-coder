@@ -3,7 +3,7 @@ Rules: coding sheet is the authority; nothing is invented; unknowns are left bla
 import re, io
 from decimal import Decimal, ROUND_HALF_UP
 import fitz  # PyMuPDF
-from docx import Document
+from maersk export
 from openpyxl import load_workbook
 
 TYPES = {"20D", "40D", "45D", "20R", "40R", "45R"}
