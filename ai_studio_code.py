@@ -1,77 +1,4 @@
-import io, os
-import pandas as pd
-import streamlit as st
-import manifest_core as mc
-
-st.set_page_config(page_title="Export Manifest Auto-Coder", layout="wide")
-CS_PATH = "coding_sheet.docx"  # commit your coding sheet to the repo under this name to auto-load it
-
-def gate():
-    try:
-        pw = st.secrets["APP_PASSWORD"]
-    except Exception:
-        st.error("Set APP_PASSWORD under Settings > Secrets in Streamlit Cloud, then reload.")
-        return False
-    if st.session_state.get("ok"):
-        return True
-    st.subheader("🔒 Manifest Coding System")
-    if st.text_input("Office access password", type="password") == pw:
-        st.session_state["ok"] = True
-        st.rerun()
-    return False
-
-if not gate():
-    st.stop()
-
-ss = st.session_state
-ss.setdefault("rows", []); ss.setdefault("seen", set())
-st.title("🚢 Export Manifest Auto-Coder")
-
-with st.sidebar:
-    cs = st.file_uploader("1. Coding sheet (.docx)", type=["docx"])
-    tpl = st.file_uploader("2. Excel template (.xlsx), optional", type=["xlsx"])
-    month = st.selectbox("Month", ["Auto (from departure date)"] + mc.MONTHS)
-if cs is not None:
-    open(CS_PATH, "wb").write(cs.getvalue())
-if os.path.exists(CS_PATH) and not mc.SHEET["ports"]:
-    mc.load_coding_sheet(CS_PATH)
-if not mc.SHEET["ports"]:
-    st.info("Upload the coding sheet in the sidebar to begin."); st.stop()
-st.caption(f"Coding sheet: {len(mc.SHEET['ports'])} ports, {len(mc.SHEET['pairs'])} line/agent pairs, {len(mc.SHEET['codes'])} commodity codes")
-
-files = st.file_uploader("3. Export manifests (PDF)", type=["pdf"], accept_multiple_files=True)
-if files and st.button("🚀 Process manifests", type="primary"):
-    for f in files:
-        key = (f.name, f.size)
-        if key in ss.seen:
-            st.warning(f"{f.name}: already processed, skipped"); continue
-        try:
-            rows, n, msg = mc.process_pdf(f.name, f.getvalue(), None if month.startswith("Auto") else month)
-        except Exception as e:
-            st.error(f"{f.name}: {e}"); continue
-        if msg: st.warning(msg)
-        if rows:
-            ss.seen.add(key); ss.rows += rows
-            st.success(f"{f.name}: {len(rows)} records from {n} B/L numbers")
-
-if ss.rows:
-    df = pd.DataFrame([{**{k: r[k] for k in mc.FIELDS}, "FLAGS": "; ".join(mc.validate(r)),
-                        "SOURCE": r["SOURCE"], "ORIGINAL": r["ORIGINAL"], "CARGO": r["CARGO"]} for r in ss.rows])
-    df.insert(0, "APPROVE", df["FLAGS"] == "")
-    st.subheader("Review (edit any cell, tick APPROVE to include)")
-    ed = st.data_editor(df, width="stretch", hide_index=True, disabled=["FLAGS", "SOURCE", "ORIGINAL", "CARGO"],
-        column_config={"CONTYPE": st.column_config.SelectboxColumn(options=sorted(mc.TYPES)),
-                       "TONNAGES": st.column_config.NumberColumn(format="%.2f", step=0.01),
-                       "CONTQTY": st.column_config.NumberColumn(step=1)})
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Records", len(ed)); c2.metric("Need review", int((df["FLAGS"] != "").sum())); c3.metric("Approved", int(ed["APPROVE"].sum()))
-    out, blocked = [], 0
-    for r in ed[ed["APPROVE"]].to_dict("records"):
-        r["FLAGS"] = []
-        if mc.validate(r): blocked += 1; continue   # hard errors (blank field / bad CONTYPE) can never be exported
-        r["TONNAGES"] = round(float(r["TONNAGES"]), 2); r["CONTQTY"] = int(r["CONTQTY"]); out.append(r)"""Drop-in fixes for the Ghana Export Manifest Auto-Coder.
-Replaces: PORT_MAP/COUNTRY_MAP, resolve_port_info, classify_commodity, normalize_container,
-parse_maersk, the carrier router, rotation handling and the Excel export.
+"""Ghana Export Manifest Auto-Coder (single file).
 Rules: coding sheet is the authority; nothing is invented; unknowns are left blank and flagged."""
 import re, io
 from decimal import Decimal, ROUND_HALF_UP
@@ -320,7 +247,7 @@ def export_to_template(rows, template_bytes=None):
     out = io.BytesIO(); wb.save(out); return out.getvalue()
 
 
-# ---------- one call per uploaded PDF (UI-free, so it can be tested) ----------
+# ---------- one call per uploaded PDF ----------
 def process_pdf(name, data, month=None):
     """Returns (rows, expected_count, message). Unknown carriers are reported, never guessed."""
     doc = fitz.open(stream=data, filetype="pdf")
@@ -333,7 +260,80 @@ def process_pdf(name, data, month=None):
         return rows, n, "" if len(rows) == n else f"{name}: found {n} B/L numbers but built {len(rows)} rows"
     return [], 0, f"{name}: carrier {car or 'not recognised'}. No tested parser yet; send a sample so it can be added"
 
+
+# ================= STREAMLIT SCREEN =================
+import os
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(page_title="Export Manifest Auto-Coder", layout="wide")
+CS_PATH = "coding_sheet.docx"  # commit your coding sheet to the repo under this name to auto-load it
+
+def gate():
+    try:
+        pw = st.secrets["APP_PASSWORD"]
+    except Exception:
+        st.error("Set APP_PASSWORD under Settings > Secrets in Streamlit Cloud, then reload.")
+        return False
+    if st.session_state.get("ok"):
+        return True
+    st.subheader("🔒 Manifest Coding System")
+    if st.text_input("Office access password", type="password") == pw:
+        st.session_state["ok"] = True
+        st.rerun()
+    return False
+
+if not gate():
+    st.stop()
+
+ss = st.session_state
+ss.setdefault("rows", []); ss.setdefault("seen", set())
+st.title("🚢 Export Manifest Auto-Coder")
+
+with st.sidebar:
+    cs = st.file_uploader("1. Coding sheet (.docx)", type=["docx"])
+    tpl = st.file_uploader("2. Excel template (.xlsx), optional", type=["xlsx"])
+    month = st.selectbox("Month", ["Auto (from departure date)"] + MONTHS)
+if cs is not None:
+    open(CS_PATH, "wb").write(cs.getvalue())
+if os.path.exists(CS_PATH) and not SHEET["ports"]:
+    load_coding_sheet(CS_PATH)
+if not SHEET["ports"]:
+    st.info("Upload the coding sheet in the sidebar to begin."); st.stop()
+st.caption(f"Coding sheet: {len(SHEET['ports'])} ports, {len(SHEET['pairs'])} line/agent pairs, {len(SHEET['codes'])} commodity codes")
+
+files = st.file_uploader("3. Export manifests (PDF)", type=["pdf"], accept_multiple_files=True)
+if files and st.button("🚀 Process manifests", type="primary"):
+    for f in files:
+        key = (f.name, f.size)
+        if key in ss.seen:
+            st.warning(f"{f.name}: already processed, skipped"); continue
+        try:
+            rows, n, msg = process_pdf(f.name, f.getvalue(), None if month.startswith("Auto") else month)
+        except Exception as e:
+            st.error(f"{f.name}: {e}"); continue
+        if msg: st.warning(msg)
+        if rows:
+            ss.seen.add(key); ss.rows += rows
+            st.success(f"{f.name}: {len(rows)} records from {n} B/L numbers")
+
+if ss.rows:
+    df = pd.DataFrame([{**{k: r[k] for k in FIELDS}, "FLAGS": "; ".join(validate(r)),
+                        "SOURCE": r["SOURCE"], "ORIGINAL": r["ORIGINAL"], "CARGO": r["CARGO"]} for r in ss.rows])
+    df.insert(0, "APPROVE", df["FLAGS"] == "")
+    st.subheader("Review (edit any cell, tick APPROVE to include)")
+    ed = st.data_editor(df, width="stretch", hide_index=True, disabled=["FLAGS", "SOURCE", "ORIGINAL", "CARGO"],
+        column_config={"CONTYPE": st.column_config.SelectboxColumn(options=sorted(TYPES)),
+                       "TONNAGES": st.column_config.NumberColumn(format="%.2f", step=0.01),
+                       "CONTQTY": st.column_config.NumberColumn(step=1)})
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Records", len(ed)); c2.metric("Need review", int((df["FLAGS"] != "").sum())); c3.metric("Approved", int(ed["APPROVE"].sum()))
+    out, blocked = [], 0
+    for r in ed[ed["APPROVE"]].to_dict("records"):
+        r["FLAGS"] = []
+        if validate(r): blocked += 1; continue   # hard errors (blank field / bad CONTYPE) can never be exported
+        r["TONNAGES"] = round(float(r["TONNAGES"]), 2); r["CONTQTY"] = int(r["CONTQTY"]); out.append(r)
     if blocked: st.error(f"{blocked} approved row(s) still have blank fields or an invalid CONTYPE and were left out.")
     if out:
-        st.download_button("📥 Download Excel", mc.export_to_template(out, tpl.getvalue() if tpl else None),
+        st.download_button("📥 Download Excel", export_to_template(out, tpl.getvalue() if tpl else None),
             file_name="EXPORT_MANIFEST_CODING.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
