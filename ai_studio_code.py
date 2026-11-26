@@ -15,24 +15,21 @@ st.set_page_config(page_title="Ghana Export Manifest Auto-Coder", layout="wide")
 # ==========================================
 
 def check_password():
-    def password_entered():
-        if st.session_state.get("password") == "GsaMeta@123":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        st.subheader("🔒 Manifest Coding System - Restricted Access")
-        st.text_input("Enter Office Access Password:", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.subheader("🔒 Manifest Coding System - Restricted Access")
-        st.text_input("Enter Office Access Password:", type="password", on_change=password_entered, key="password")
-        st.error("❌ Incorrect password. Access denied.")
-        return False
-    else:
+    if st.session_state.get("password_correct"):
         return True
+
+    st.subheader("🔒 Manifest Coding System - Restricted Access")
+    with st.form("login_form"):
+        pwd = st.text_input("Enter Office Access Password:", type="password")
+        submitted = st.form_submit_button("Enter", type="primary")
+
+    if submitted:
+        if pwd == "GsaMeta@123":
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("❌ Incorrect password. Access denied.")
+    return False
 
 if not check_password():
     st.stop()
@@ -190,7 +187,7 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
     def has_word(text_to_check, words):
         return any(re.search(rf"\b{re.escape(w)}\b", text_to_check) for w in words)
 
-    def match_rules(text_to_check):
+    def match_rules(text_to_check, allow_vehicle_match: bool = True):
         # 1. Cocoa & Cocoa Products
         if any(k in text_to_check for k in ["COCOA BEAN", "RAW COCOA", "BEANS OF COCOA"]) or hs_clean.startswith("1801"):
             return "LCB"
@@ -198,7 +195,7 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LCP"
 
         # 2. Fresh Produce & Agricultural Commodities
-        if "BANANA" in text_to_check and "CONDOM" not in text_to_check or hs_clean.startswith("0803"):
+        if ("BANANA" in text_to_check and "CONDOM" not in text_to_check) or hs_clean.startswith("0803"):
             return "LBN"
         if any(k in text_to_check for k in ["PINEAPPLE JUICE", "CANNED PINEAPPLE", "MANGO JUICE", "JUICE DRINK"]) or hs_clean.startswith(("2008", "2009")):
             return "LPE"
@@ -213,7 +210,7 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         if any(k in text_to_check for k in ["TOBACCO", "GINGER", "CHILLI", "TURMERIC", "SESAME", "SEEDS", "COCONUT", "COIR", "COCOPEAT", "PEPPER", "CASHEW SHELL", "COCOA SHELL", "CHARCOAL", "TAMARIND"]) or hs_clean.startswith(("0813", "0904", "0910", "1207", "2401", "5305")):
             return "LNO"
 
-        # 3. Fish & Meat (check Canned Fish LFS before general Frozen Fish/Meat LFI)
+        # 3. Fish & Meat (check Canned Fish LFS before Frozen Fish/Meat LFI)
         if any(k in text_to_check for k in ["CANNED TUNA", "CANNED FISH", "CANNED MACKEREL", "CANNED SARDINE"]) or hs_clean.startswith("1604"):
             return "LFS"
         if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "BLACK SEA BREAM", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO", "PRAWNS", "SEAFOOD"]) or hs_clean.startswith(("0201", "0202", "0207", "0303", "0306")):
@@ -235,12 +232,28 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         if any(k in text_to_check for k in ["ALUMINIUM INGOT", "ALUMINUM INGOT", "ALUMINIUM WIRE ROD", "ALUMINUM WIRE"]):
             return "LAL"
 
-        # 6. Vehicles, Trucks & Machinery/Equipment
-        if hs_clean.startswith("8704") or any(k in text_to_check for k in ["FORKLIFT", "TRACTOR", "REFRIGERATED TRUCK", "PICKUP TRUCK"]) or (has_word(text_to_check, ["TRUCK", "TRUCKS"]) and "TIRE" not in text_to_check and "TYRE" not in text_to_check):
-            return "LTR"
-        if any(k in text_to_check for k in ["VEHICLE", "USED AUTO", "USED CAR", "SECOND-HAND CAR", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "NISSAN", "CHANGAN", "JETOUR", "AUTOS", "AUTORICKSHAW", "BAJAJ", "TRICYCLE"]) or (any(k in text_to_check for k in ["MOTORCYCLE"]) and "PART" not in text_to_check and "ACCESSOR" not in text_to_check) or has_word(text_to_check, ["CAR", "CARS"]) or hs_clean.startswith(("8703", "8711")):
-            return "LVE"
-        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "AUTO PARTS", "MOTORCYCLE PARTS", "MOTORCYCLE ACCESSOR", "WHEEL LOADER", "CRUSHER", "SOLAR PANEL", "SOLAR SYSTEM", "SOLAR MODULE", "BATTERY", "REFRIGERATOR", "FRIDGE", "CHEST FREEZER", "AIR CONDITION", "CEILING FAN", "STAND FAN", "WALL FAN", "FANS", "SPEAKER", "HOME APPLIANCE", "ELECTRONIC GOODS", "ALTERNATOR", "MOULDS", "LATHE", "INCENSE", "MATCHET", "AGRICULTURAL IMPLEMENT", "REFRIGERATING", "SHOVEL", "SPRAYER", "WRENCH", "HAND TOOLS"]) or hs_clean.startswith(("84", "85", "8201", "8204", "8205", "8708", "8714", "9018")):
+        # 6. Vehicles/Cars (LVE), Trucks (LTR) & Machinery/Equipment (LME)
+        if allow_vehicle_match:
+            if hs_clean.startswith("8704") or any(k in text_to_check for k in ["FORKLIFT", "TRACTOR", "REFRIGERATED TRUCK", "PICKUP TRUCK"]) or (has_word(text_to_check, ["TRUCK", "TRUCKS"]) and "TIRE" not in text_to_check and "TYRE" not in text_to_check):
+                return "LTR"
+
+            is_part_or_non_car = any(k in text_to_check for k in [
+                "CAR BATTERY", "CAR FITTING", "SPARE PART", "ACCESSOR", "MOTORCYCLE", "TRICYCLE",
+                "ENGINE", "FILTER", "BRAKE", "BICYCLE", "BABY WALKER"
+            ])
+            has_vehicle_word = (
+                any(k in text_to_check for k in [
+                    "VEHICLE", "USED AUTO", "USED CAR", "USED CARS", "SECOND-HAND CAR", "SECOND-HAND CARS",
+                    "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "NISSAN", "LEXUS",
+                    "CHANGAN", "JETOUR", "AUTOS", "AUTORICKSHAW", "BAJAJ"
+                ])
+                or has_word(text_to_check, ["CARS"])
+                or hs_clean.startswith("8703")
+            )
+            if has_vehicle_word and not is_part_or_non_car:
+                return "LVE"
+
+        if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "AUTO PARTS", "MOTORCYCLE", "TRICYCLE", "CAR BATTERY", "CAR FITTING", "WHEEL LOADER", "CRUSHER", "SOLAR PANEL", "SOLAR SYSTEM", "SOLAR MODULE", "BATTERY", "REFRIGERATOR", "FRIDGE", "CHEST FREEZER", "AIR CONDITION", "CEILING FAN", "STAND FAN", "WALL FAN", "FANS", "SPEAKER", "HOME APPLIANCE", "ELECTRONIC GOODS", "ALTERNATOR", "MOULDS", "LATHE", "INCENSE", "MATCHET", "AGRICULTURAL IMPLEMENT", "REFRIGERATING", "SHOVEL", "SPRAYER", "WRENCH", "HAND TOOLS"]) or hs_clean.startswith(("84", "85", "8201", "8204", "8205", "8708", "8711", "8714", "9018")):
             return "LME"
 
         # 7. Chemicals, Resins, Detergents & Lubricants
@@ -257,16 +270,28 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
 
         return None
 
-    result = match_rules(t)
+    result = match_rules(t, allow_vehicle_match=True)
     if result:
         return result
 
     if use_web_search and len(desc.strip()) > 3:
-        cleaned_words = [w for w in re.sub(r"[^A-Za-z]", " ", desc).split() if len(w) > 3][:3]
+        noise_words = {
+            "PACKAGES", "PACKAGE", "CARTONS", "CARTON", "BALES", "BALE", "PKGS", "CTNS",
+            "PIECES", "SETS", "BOXES", "DRUMS", "ROLLS", "PALLETS", "BAGS", "SACKS",
+            "CRATES", "UNITS", "UNIT", "GENERAL", "GOODS", "DIVERS", "VARIOUS", "ITEMS",
+            "STUFF", "SAID", "CONTAIN", "TOTAL", "GROSS", "WEIGHT", "TRANSIT", "DAKAR",
+            "MALI", "BAMAKO", "GAMBIA", "BANJUL", "CONAKRY", "GUINEA", "SENEGAL", "BISSAU",
+            "CHINA", "INDIA", "PREPAID", "COLLECT", "INVOICE", "DATE", "SHIPPING", "BILL",
+            "CODE", "NUMBER", "MARCHANDISES", "DIVERSES", "CARGO", "CONTAINER"
+        }
+        cleaned_words = [
+            w for w in re.sub(r"[^A-Za-z]", " ", desc.upper()).split()
+            if len(w) > 3 and w not in noise_words
+        ][:3]
         if cleaned_words:
             web_info = fast_web_lookup(" ".join(cleaned_words) + " product")
             if web_info:
-                res = match_rules(web_info)
+                res = match_rules(web_info, allow_vehicle_match=False)
                 if res:
                     return res
 
@@ -581,13 +606,11 @@ def parse_cosco(pdf_text: str, use_web_search: bool = True):
 def parse_maersk(pdf_text: str, use_web_search: bool = True):
     rows = []
 
-    # Anchor Vessel to start-of-line so "Nationality of Vessel" / "Vessel Disch:" never matches
     ship_m = re.search(r"(?:^|\n)[ \t]*Vessel[ \t]*\n[ \t]*([A-Z0-9 \-]+?)(?:[ \t]+Page|\n|$)", pdf_text, re.IGNORECASE)
     ship = ship_m.group(1).strip().upper() if ship_m else "UNKNOWN VESSEL"
 
     carrier, agent = ("CMA CGM", "CMA CGM GH. LTD.") if "CMA CGM" in ship else ("MAERSK LINE", "MAERSK GH. LTD.")
 
-    # Strip repeated Maersk page headers/footers so B/Ls split across page breaks rejoin seamlessly
     clean_text = re.sub(
         r"(?:ML Export Manifest\s*\n)?Voyage No\b[\s\S]*?Rate\s+Currency\s+Prepaid\s+Collect\s*\n",
         "\n",
@@ -596,7 +619,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
     )
     clean_text = re.sub(r"\n[ \t]*ML Export Manifest[ \t]*(?=\n|$)", "\n", clean_text, flags=re.IGNORECASE)
 
-    # Split at every B/L start (including page-wrap starts like "275481017 1 X 40 DRY 9'6 ...")
     bl_chunks = re.split(
         r"(?:^|\n)[ \t]*(?=(?:[A-Z0-9]{7,12}(?:\s*\n\s*[0-9]{1,4})?\s*\n\s*(?:MAEU|WAYBILL)\b|\d{8,12}\s+\d+\s*X\s*\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)\b))",
         clean_text
@@ -612,7 +634,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
         pod_raw = pod_m.group(1).strip().upper() if pod_m else "LOME"
         port_info = resolve_port_info(pod_raw, chunk, use_web_search)
 
-        # Extract container summary line (supports mixed sizes like "2 X 20 DRY 8'6, 1 X 40 DRY 9'6")
         cont_summary_m = re.search(
             r"(?:^|\n)[ \t]*([^\n]*\d+\s*X\s*\d{2}\s*(?:DRY|REEF|OPEN|HC|HR)[^\n]*)\n[ \t]*(?:CY|SD|FCL)/(?:CY|SD|FCL)\b",
             chunk,
@@ -629,7 +650,6 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
 
         total_cont_qty = sum(int(q) for q, _ in cont_matches if int(q) > 0) or 1
 
-        # Gross Weight extraction
         cleaned_wgt = re.sub(r"Tare(?:\s*Weight)?\s*:\s*[\d\.,\s]+(?:KGS|KG)", "", chunk, flags=re.IGNORECASE)
         tonnage = 0.0
 
@@ -668,13 +688,11 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
         if tonnage <= 0:
             continue
 
-        # HS Code extraction (supports "Shipper Provided HS Code", "H.S.CODE", "HSN CODE", "HS:")
         hs_m = re.search(r"Shipper Provided HS Code\s*[:\-\.]*\s*(\d{4,10})", chunk, re.IGNORECASE)
         if not hs_m:
             hs_m = re.search(r"\bH\.?S\.?N?(?:\s*CODE)?(?:\s*NO\.?)?\s*[:\-\.]+\s*(\d{4,10})", chunk, re.IGNORECASE)
         hs = hs_m.group(1) if hs_m else ""
 
-        # Description extraction: capture goods text after CY/CY (or SD/CY) AND any wrapped text after seal number
         desc_parts = []
         d1 = re.search(
             r"(?:CY|SD|FCL)/(?:CY|SD|FCL)\s*\n([\s\S]+?)(?=\n(?:Basic Ocean Freight|Additional Import Service|Additional Export Service|Documentation fee|Document Stamp Tax|Late Payment Fee|Electronic Cargo Release|Rollable Compensation|Transport Document|Detention Fee|Demurrage Fee|DMR Free|Change of Destination|Consignee FT|Final Disch:|Shipper:|Consignee:|$))",
@@ -684,19 +702,16 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
         if d1:
             desc_parts.append(d1.group(1))
 
-        # Capture wrapped goods description appearing after page-break seal number
         for d2 in re.finditer(
             r"\nML-[A-Z0-9]+\s*\n(?:(?:Customs Seal|Shipper Seal)\s*\n\s*[A-Z0-9]+\s*\n)?(?!(?:27|26|28)\d{7}\b)([\s\S]+?)(?=\n(?:Basic Ocean Freight|Additional Import Service|Additional Export Service|Documentation fee|Document Stamp Tax|Late Payment Fee|Electronic Cargo Release|Rollable Compensation|Transport Document|Detention Fee|Demurrage Fee|Export Service|3rd Party Fine|Operational Cost|Terminal Handling|Port Additionals|Recovery for Handling|Value Protect|$))",
             chunk,
             re.IGNORECASE
         ):
             block_txt = d2.group(1).strip()
-            # Only append if it's after a Freight/Parties wrap (avoid duplicating container lines already in d1)
             if block_txt and not re.match(r"^(?:CY|SD|FCL)/(?:CY|SD|FCL)\b", block_txt, re.IGNORECASE):
                 desc_parts.append(block_txt)
 
         raw_desc = "\n".join(desc_parts)
-        # Remove Notify Party addresses inside description block so city/company names don't confuse classification
         raw_desc = re.sub(r"(?:Shipper Provided HS Code|Notify|Second Notify|Third Notify|Fourth Notify|Fifth Notify|2nd Notify|3rd Notify|4th Notify|5th Notify|ALSO NOTIFY|DESTINATION AGENT ADDRESS|Tare:)[^\n]*", "", raw_desc, flags=re.IGNORECASE)
         desc = raw_desc.strip()
 
@@ -831,7 +846,6 @@ if uploaded_files:
 
             status_text.text("Detecting shipping carrier and extracting cargo rows...")
 
-            # Smart Multi-Carrier Router (uses strict carrier headers & B/L prefixes)
             parsed = []
             if "ML EXPORT MANIFEST" in upper_text or "MAERSK LINE" in upper_text or re.search(r"\bMAEU\b", upper_text):
                 parsed = parse_maersk(full_text, enable_web_search)
