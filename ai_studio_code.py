@@ -58,6 +58,7 @@ COUNTRY_MAP = {
     "DENMARK": ("DK", "CT"), "SWEDEN": ("SE", "CT"), "NORWAY": ("NW", "CT"),
     "FINLAND": ("FL", "CT"), "ESTONIA": ("ET", "CT"), "LATVIA": ("LV", "CT"),
     "LITHUANIA": ("LT", "CT"), "UKRAINE": ("UE", "CT"), "RUSSIA": ("RU", "CT"),
+    "RUSSIAN": ("RU", "CT"),
 
     "SPAIN": ("SP", "ME"), "ITALY": ("IT", "ME"), "GREECE": ("GC", "ME"),
     "PORTUGAL": ("PG", "ME"), "TURKEY": ("TU", "ME"), "TURKIYE": ("TU", "ME"),
@@ -88,18 +89,21 @@ PORT_MAP = {
     "DOUALA": ("DL", "CM", "AF"), "DURBAN": ("DR", "SA", "AF"), "CAPETOWN": ("CN", "SA", "AF"),
     "CAPE TOWN": ("CN", "SA", "AF"), "PORT ELIZABETH": ("PE", "SA", "AF"), "TEMA": ("TM", "GH", "AF"),
     "TAKORADI": ("TD", "GH", "AF"), "DAR ES SALAAM": ("ES", "TZ", "AF"), "CONAKRY": ("CN", "GN", "AF"),
+    "FREETOWN": ("OH", "SL", "AF"),
     "ANTWERP": ("AT", "BG", "CT"), "AMSTERDAM": ("AM", "NL", "CT"), "ROTTERDAM": ("RM", "NL", "CT"),
     "HAMBURG": ("HM", "GR", "CT"), "BREMERHAVEN": ("BM", "GR", "CT"), "LE HAVRE": ("LH", "FR", "CT"),
     "DUNKERQUE": ("DK", "FR", "CT"), "DUNKIRK": ("DK", "FR", "CT"), "PORT VENDRES": ("BD", "FR", "CT"),
     "FOS SUR MER": ("OH", "FR", "CT"), "MARSEILLE": ("MS", "FR", "CT"), "ROUEN": ("RN", "FR", "CT"),
     "GDYNIA": ("GA", "PL", "CT"), "GDANSK": ("GK", "PL", "CT"), "ZEEBRUGGE": ("ZB", "BG", "CT"),
+    "TALLINN": ("OH", "ET", "CT"), "SAINT PETERSBURG": ("OH", "RU", "CT"),
     "TILBURY": ("TY", "UK", "UK"), "LIVERPOOL": ("LV", "UK", "UK"), "LONDON": ("LD", "UK", "UK"),
     "FELIXSTOWE": ("FX", "UK", "UK"), "DUBLIN": ("DU", "IR", "UK"), "BELFAST": ("BT", "IR", "UK"),
     "CORK": ("OH", "IR", "UK"),
     "BARCELONA": ("BC", "SP", "ME"), "VALENCIA": ("VL", "SP", "ME"), "ALGECIRAS": ("AR", "SP", "ME"),
     "GENOA": ("GE", "IT", "ME"), "LIVORNO": ("LO", "IT", "ME"), "NAPLES": ("NS", "IT", "ME"),
     "ISTANBUL": ("IL", "TU", "ME"), "IZMIT": ("OH", "TU", "ME"), "AMBARLI": ("OH", "TU", "ME"),
-    "MARPORT": ("OH", "TU", "ME"), "PIRAEUS": ("PI", "GC", "ME"), "ALEXANDRIA": ("OH", "EY", "AF"),
+    "MARPORT": ("OH", "TU", "ME"), "GEBZE": ("OH", "TU", "ME"), "PIRAEUS": ("PI", "GC", "ME"),
+    "ALEXANDRIA": ("OH", "EY", "AF"),
     "SHANGHAI": ("SH", "CH", "FE"), "NINGBO": ("OH", "CH", "FE"), "QINGDAO": ("OH", "CH", "FE"),
     "XIAMEN": ("OH", "CH", "FE"), "NANSHA": ("OH", "CH", "FE"), "SHEKOU": ("OH", "CH", "FE"),
     "HONGKONG": ("HK", "HK", "FE"), "HONG KONG": ("HK", "HK", "FE"),
@@ -109,6 +113,7 @@ PORT_MAP = {
     "MUNDRA": ("OH", "IN", "FE"), "CHENNAI": ("MD", "IN", "FE"), "TUTICORIN": ("OH", "IN", "FE"),
     "VISAKHAPATNAM": ("OH", "IN", "FE"), "YOKOHAMA": ("YK", "JP", "FE"), "TOKYO": ("TK", "JP", "FE"),
     "NEW YORK": ("NY", "US", "NA"), "SAVANNAH": ("SV", "US", "NA"), "HOUSTON": ("HO", "US", "NA"),
+    "MONTREAL": ("OH", "CN", "NA"),
     "COLOMBO": ("OH", "SR", "FE")
 }
 
@@ -192,13 +197,17 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         return any(re.search(rf"\b{re.escape(w)}\b", text_to_check) for w in words)
 
     def match_rules(text_to_check, allow_vehicle_match: bool = True):
-        # 1. Cocoa & Cocoa Products
+        # 1. Dairy / Beverage blends before Cocoa/Chocolate
+        if hs_clean.startswith("0402"):
+            return "LPE"
+
+        # 2. Cocoa & Cocoa Products
         if any(k in text_to_check for k in ["COCOA BEAN", "RAW COCOA", "BEANS OF COCOA"]) or hs_clean.startswith("1801"):
             return "LCB"
-        if any(k in text_to_check for k in ["COCOA BUTTER", "COCOA CAKE", "COCOA POWDER", "COCOA LIQUOR", "COCOA MASS", "COCOA PASTE", "CHOCOLATE", "COCOA NIB"]) or hs_clean.startswith(("1803", "1804", "1805", "1806")):
+        if any(k in text_to_check for k in ["COCOA BUTTER", "COCOA CAKE", "COCOA POWDER", "COCOA LIQUOR", "COCOA MASS", "COCOA PASTE", "CHOCOLATE", "COCOA NIB", "COCOA PRESS CAKE"]) or hs_clean.startswith(("1803", "1804", "1805", "1806")):
             return "LCP"
 
-        # 2. Fresh Produce & Agricultural Commodities
+        # 3. Fresh Produce & Agricultural Commodities
         if ("BANANA" in text_to_check and "CONDOM" not in text_to_check) or hs_clean.startswith("0803"):
             return "LBN"
         if any(k in text_to_check for k in ["PINEAPPLE JUICE", "CANNED PINEAPPLE", "MANGO JUICE", "JUICE DRINK"]) or hs_clean.startswith(("2008", "2009")):
@@ -207,30 +216,25 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
             return "LPN"
         if has_word(text_to_check, ["YAM", "YAMS"]) or hs_clean.startswith("0714"):
             return "LYM"
-        if any(k in text_to_check for k in ["CASHEW", "ANACARDE"]) or hs_clean.startswith("080131"):
+        if any(k in text_to_check for k in ["CASHEW", "ANACARDE"]) or hs_clean.startswith(("080131", "080132")):
             return "LCA"
-        if any(k in text_to_check for k in ["SHEA NUT", "SHEANUT", "SHEA BUTTER", "SHEABUTTER", "KARITE"]):
+        if any(k in text_to_check for k in ["SHEA NUT", "SHEANUT", "SHEA BUTTER", "SHEABUTTER", "SHEA STEARIN", "KARITE"]) or hs_clean.startswith("1515"):
             return "LSH"
 
-        # Check prepared/ethnic foodstuff containers before single-ingredient LNO/LFI/LCH/LRB triggers
-        if any(k in text_to_check for k in [
-            "ASSORTED FOOD", "FOOD ITEMS", "FOODSTUFF", "GARI", "CASSAVA DOUGH", "CASSAVA FLOUR",
-            "CORN DOUGH", "PALM SOUP", "PALM BASE", "PALM OIL", "TOMBROWN", "TOM BROWN",
-            "HAUSA KOKO", "TUOZAAFI", "INDOMIE", "NOODLES", "ALOMO BITTERS", "CLUB BEER",
-            "PLANTAIN FUFU"
-        ]):
+        # Ethnic / mixed foodstuff containers before single-ingredient LNO/LFI/LCH/LRB triggers
+        if any(k in text_to_check for k in ["ASSORTED FOOD", "FOOD ITEMS", "FOODSTUFF", "GARI", "CASSAVA DOUGH", "CASSAVA FLOUR", "CORN DOUGH", "PALM SOUP", "PALM BASE", "PALM OIL", "TOMBROWN", "TOM BROWN", "HAUSA KOKO", "TUOZAAFI", "INDOMIE", "NOODLES", "ALOMO BITTERS", "CLUB BEER", "PLANTAIN FUFU", "CERELAC"]):
             return "LPE"
 
         if any(k in text_to_check for k in ["TOBACCO", "GINGER", "CHILLI", "TURMERIC", "SESAME", "SEEDS", "COCONUT", "COIR", "COCOPEAT", "PEPPER", "CASHEW SHELL", "COCOA SHELL", "CHARCOAL", "TAMARIND"]) or hs_clean.startswith(("0813", "0904", "0910", "1207", "2401", "5305")):
             return "LNO"
 
-        # 3. Fish & Meat (check Canned Fish LFS before Frozen Fish/Meat LFI)
-        if any(k in text_to_check for k in ["CANNED TUNA", "CANNED FISH", "CANNED MACKEREL", "CANNED SARDINE"]) or hs_clean.startswith("1604"):
+        # 4. Fish & Meat (check Canned/Pouched Fish LFS before Frozen Fish/Meat LFI)
+        if any(k in text_to_check for k in ["CANNED TUNA", "POUCHED TUNA", "CANNED FISH", "CANNED MACKEREL", "CANNED SARDINE"]) or hs_clean.startswith("1604"):
             return "LFS"
         if any(k in text_to_check for k in ["TUNA", "FROZEN FISH", "BLACK SEA BREAM", "SKIPJACK", "YELLOWFIN", "MACKEREL", "SARDINE", "MEAT", "POULTRY", "CHICKEN", "BUFFALO", "PRAWNS", "SEAFOOD"]) or hs_clean.startswith(("0201", "0202", "0207", "0303", "0306")):
             return "LFI"
 
-        # 4. Timber, Lumber & Furniture
+        # 5. Timber, Lumber & Furniture
         if any(k in text_to_check for k in ["ROUND LOG", "TEAK POLE", "LOGS", "ROUGH SQUARE LOGS", "ROUGH SQUARES", "TEAK ROUGH"]) or (hs_clean.startswith("4403") and "SAWN" not in text_to_check):
             return "LLG"
         if any(k in text_to_check for k in ["LUMBER", "SAWN TIMBER", "TEAK SAWN", "TEAK IN CONTAINER", "TEAK WOOD", "TEAK TIMBER", "PLYWOOD", "CHIP BOARD", "CHIPBOARD", "MELAMINE BOARD", "FIBREBOARD", "FIBERBOARD"]) or hs_clean.startswith(("4407", "4411", "4412")):
@@ -238,7 +242,7 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         if any(k in text_to_check for k in ["FURNITURE", "DOOR", "MOULDING", "WOODEN CHAIR", "SOFA", "WARDROBE"]) or hs_clean.startswith(("9401", "9403")):
             return "LFW"
 
-        # 5. Metals, Scrap, Rubber & Aluminium
+        # 6. Metals, Scrap, Rubber & Aluminium
         if any(k in text_to_check for k in ["SCRAP", "COPPER SCRAP", "ALUMINIUM SCRAP", "STEEL SCRAP", "IRON SCRAP"]) or hs_clean.startswith(("7204", "7404", "7602")):
             return "LMS"
         if any(k in text_to_check for k in ["NATURAL RUBBER", "RAW RUBBER", "CRUMB RUBBER", "TIRE", "TYRE", "TYRES", "TIRES", "TUBES", "CONDOM"]) or (has_word(text_to_check, ["RUBBER"]) and "PLASTIC RUBBER" not in text_to_check) or hs_clean.startswith(("4011", "4014")):
@@ -246,40 +250,29 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         if any(k in text_to_check for k in ["ALUMINIUM INGOT", "ALUMINUM INGOT", "ALUMINIUM WIRE ROD", "ALUMINUM WIRE"]):
             return "LAL"
 
-        # 6. Vehicles/Cars (LVE), Trucks (LTR) & Machinery/Equipment (LME)
+        # 7. Vehicles/Cars (LVE), Trucks (LTR) & Machinery/Equipment (LME)
         if allow_vehicle_match:
             if hs_clean.startswith("8704") or any(k in text_to_check for k in ["FORKLIFT", "TRACTOR", "REFRIGERATED TRUCK", "PICKUP TRUCK"]) or (has_word(text_to_check, ["TRUCK", "TRUCKS"]) and "TIRE" not in text_to_check and "TYRE" not in text_to_check):
                 return "LTR"
 
-            is_part_or_non_car = any(k in text_to_check for k in [
-                "CAR BATTERY", "CAR FITTING", "SPARE PART", "ACCESSOR", "MOTORCYCLE", "TRICYCLE",
-                "ENGINE", "FILTER", "BRAKE", "BICYCLE", "BABY WALKER"
-            ])
-            has_vehicle_word = (
-                any(k in text_to_check for k in [
-                    "VEHICLE", "USED AUTO", "USED CAR", "USED CARS", "SECOND-HAND CAR", "SECOND-HAND CARS",
-                    "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "NISSAN", "LEXUS",
-                    "CHANGAN", "JETOUR", "AUTOS", "AUTORICKSHAW", "BAJAJ"
-                ])
-                or has_word(text_to_check, ["CARS"])
-                or hs_clean.startswith("8703")
-            )
+            is_part_or_non_car = any(k in text_to_check for k in ["CAR BATTERY", "CAR FITTING", "SPARE PART", "ACCESSOR", "MOTORCYCLE", "TRICYCLE", "ENGINE", "FILTER", "BRAKE", "BICYCLE", "BABY WALKER"])
+            has_vehicle_word = any(k in text_to_check for k in ["VEHICLE", "USED AUTO", "USED CAR", "USED CARS", "SECOND-HAND CAR", "SECOND-HAND CARS", "TOYOTA", "HYUNDAI", "MERCEDES", "MAZDA", "HONDA", "NISSAN", "LEXUS", "CHANGAN", "JETOUR", "AUTOS", "AUTORICKSHAW", "BAJAJ"]) or has_word(text_to_check, ["CARS"]) or hs_clean.startswith("8703")
             if has_vehicle_word and not is_part_or_non_car:
                 return "LVE"
 
         if any(k in text_to_check for k in ["MACHINE", "ENGINE", "PUMP", "EQUIPMENT", "SPARE PARTS", "AUTO PARTS", "MOTORCYCLE", "TRICYCLE", "CAR BATTERY", "CAR FITTING", "WHEEL LOADER", "CRUSHER", "SOLAR PANEL", "SOLAR SYSTEM", "SOLAR MODULE", "BATTERY", "REFRIGERATOR", "FRIDGE", "CHEST FREEZER", "AIR CONDITION", "CEILING FAN", "STAND FAN", "WALL FAN", "FANS", "SPEAKER", "HOME APPLIANCE", "ELECTRONIC GOODS", "ALTERNATOR", "MOULDS", "LATHE", "INCENSE", "MATCHET", "AGRICULTURAL IMPLEMENT", "REFRIGERATING", "SHOVEL", "SPRAYER", "WRENCH", "HAND TOOLS"]) or hs_clean.startswith(("84", "85", "8201", "8204", "8205", "8708", "8711", "8714", "9018")):
             return "LME"
 
-        # 7. Chemicals, Resins, Detergents & Lubricants
-        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "EVA MATERIAL", "POLYETHER POLYOL", "GYPSUM", "CHLORIDE", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE", "MANGANESE", "ENZYMES", "BOSTIK", "DETERGENT", "WASHING POWDER", "COCAMIDOPROPYL", "LUBRICANT", "LUBRICATING", "PIGMENT", "DYESTUFF", "ULTRAMARINE", "PHOSPHIDE", "BENZOATE", "TIRE SEALER", "KAOLINITE"]) or has_word(text_to_check, ["SALT"]) or hs_clean.startswith(("2501", "2507", "2520", "2710", "28", "29", "3206", "3402", "3506", "3507", "38", "3901", "3907", "7202")):
+        # 8. Chemicals, Resins, Detergents & Lubricants
+        if any(k in text_to_check for k in ["CHEMICAL", "ZINC OXIDE", "CALCIUM", "RESIN", "POLYETHYLENE", "HDPE", "LLDPE", "EVA MATERIAL", "POLYETHER POLYOL", "PET FLAKES", "GYPSUM", "CHLORIDE", "ETHYL ACETATE", "HEXANE", "SOLVENT", "ACETATE", "MANGANESE", "ENZYMES", "BOSTIK", "DETERGENT", "WASHING POWDER", "COCAMIDOPROPYL", "LUBRICANT", "LUBRICATING", "PIGMENT", "DYESTUFF", "ULTRAMARINE", "PHOSPHIDE", "BENZOATE", "TIRE SEALER", "KAOLINITE", "POWERFLOW"]) or has_word(text_to_check, ["SALT"]) or hs_clean.startswith(("2501", "2507", "2520", "2710", "28", "29", "3206", "3402", "3506", "3507", "38", "3901", "3907", "7202")):
             return "LCH"
 
-        # 8. Foodstuffs, Beverages, Textiles, Footwear, Pharma & Personal Effects
-        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOOD ITEM", "BISCUITS", "CONFECTIONERY", "SNACK PELLET", "SUGAR", "SOYABEAN OIL", "SOY SAUCE", "GHERKINS", "TOMATO PASTE", "BEVERAGE", "VODKA", "WHISKY", "COFFEE", "BLACK TEA", "GREEN TEA", "CEYLON BLACK TEA", "SOAP", "SODIUM PALMITATE", "DEODORANT", "COSMETIC", "TOOTHPASTE", "CREAM", "BEAUTY", "TEXTILE", "CLOTHING", "USED CLOTH", "SECOND HAND CLOTH", "CLOTHES", "GARMENTS", "SHIRT", "JEANS", "DRESS", "BED SHEET", "BEDSHEET", "CURTAIN", "SHOES", "SLIPPERS", "FOOTWEAR", "SUITCASE", "TROLLEY CASE", "BABY DIAPER", "ADULT DIAPER", "SANITARY NAPKIN", "SYNTHETIC FIBER", "SYNTHETIC MONO FILAMENT", "HUMAN HAIR", "SYNTHETIC HAIR", "PARBOILED RICE", "RICE PAPER", "MEDICINE", "PHARMACEUTICAL", "MEDICAL SUPPL", "MEDICAL PRODUCT", "GAUZE SWAB", "LATEX GLOVES", "TAILORING", "POPPADOM", "FILTERATION", "YARN", "FABRIC", "NONWOVENS", "PAPERBOARD", "PAPER CUP", "TISSUE", "PRINTED BOOKS", "EDUCATIONAL BOOKS", "SPORTS MATERIAL", "CATERING", "HOUSEHOLDING GOODS", "HOUSEGOODS"]) or has_word(text_to_check, ["OIL", "HAIR", "RICE", "TEA", "BAGS", "BAG", "SACS", "BEER", "WINE"]) or hs_clean.startswith(("0902", "1702", "1704", "1904", "1905", "2001", "2002", "2101", "2103", "2208", "3004", "3005", "3304", "3307", "3401", "4015", "4202", "4818", "4823", "4901", "52", "54", "55", "56", "58", "61", "62", "63", "64", "9619")):
+        # 9. Foodstuffs, Beverages, Textiles, Footwear, Pharma & Personal Effects
+        if any(k in text_to_check for k in ["SPAGHETTI", "MACARONI", "FOOD ITEM", "BISCUITS", "CONFECTIONERY", "SNACK PELLET", "SUGAR", "SOYABEAN OIL", "SOY SAUCE", "GHERKINS", "TOMATO PASTE", "BEVERAGE", "VODKA", "WHISKY", "COFFEE", "BLACK TEA", "GREEN TEA", "CEYLON BLACK TEA", "SOAP", "SODIUM PALMITATE", "DEODORANT", "COSMETIC", "TOOTHPASTE", "CREAM", "BEAUTY", "TEXTILE", "CLOTHING", "USED CLOTH", "SECOND HAND CLOTH", "CLOTHES", "GARMENTS", "SHIRT", "TSHIRT", "JEANS", "DRESS", "CAPS", "BED SHEET", "BEDSHEET", "CURTAIN", "SHOES", "SLIPPERS", "FOOTWEAR", "SUITCASE", "TROLLEY CASE", "BABY DIAPER", "ADULT DIAPER", "SANITARY NAPKIN", "SYNTHETIC FIBER", "SYNTHETIC MONO FILAMENT", "HUMAN HAIR", "SYNTHETIC HAIR", "PARBOILED RICE", "RICE PAPER", "MEDICINE", "PHARMACEUTICAL", "MEDICAL SUPPL", "MEDICAL PRODUCT", "GAUZE SWAB", "LATEX GLOVES", "TAILORING", "POPPADOM", "FILTERATION", "YARN", "FABRIC", "NONWOVENS", "PAPERBOARD", "PAPER CUP", "PHOTOCOPY PAPER", "TISSUE", "PRINTED BOOKS", "EDUCATIONAL BOOKS", "STATIONERY", "STATIONARY", "SPORTS MATERIAL", "CATERING", "HOUSEHOLDING GOODS", "HOUSEGOODS", "COWBELL", "YUMVITA", "ONGA"]) or has_word(text_to_check, ["OIL", "HAIR", "RICE", "TEA", "BAGS", "BAG", "SACS", "BEER", "WINE"]) or hs_clean.startswith(("0902", "1702", "1704", "1901", "1904", "1905", "2001", "2002", "2101", "2103", "2208", "3004", "3005", "3304", "3307", "3401", "4015", "4202", "4802", "4818", "4820", "4823", "4901", "52", "54", "55", "56", "58", "61", "62", "63", "64", "6505", "9619")):
             return "LPE"
 
-        # 9. Building Materials / General Cargo
-        if any(k in text_to_check for k in ["GRANITE", "TILES", "SANITARY WARE", "GLASS", "MANHOLE COVER"]) or hs_clean.startswith(("6904", "6907", "6910", "6914", "7005", "7007")):
+        # 10. Building Materials / General Cargo
+        if any(k in text_to_check for k in ["GRANITE", "TILES", "SANITARY WARE", "GLASS", "MANHOLE COVER", "LEAD INGOTS"]) or hs_clean.startswith(("6802", "6904", "6907", "6910", "6914", "7005", "7007", "7801")):
             return "LGC"
 
         return None
@@ -289,19 +282,8 @@ def classify_commodity(desc: str, hs_code: str = "", use_web_search: bool = Fals
         return result
 
     if use_web_search and len(desc.strip()) > 3:
-        noise_words = {
-            "PACKAGES", "PACKAGE", "CARTONS", "CARTON", "BALES", "BALE", "PKGS", "CTNS",
-            "PIECES", "SETS", "BOXES", "DRUMS", "ROLLS", "PALLETS", "BAGS", "SACKS",
-            "CRATES", "UNITS", "UNIT", "GENERAL", "GOODS", "DIVERS", "VARIOUS", "ITEMS",
-            "STUFF", "SAID", "CONTAIN", "TOTAL", "GROSS", "WEIGHT", "TRANSIT", "DAKAR",
-            "MALI", "BAMAKO", "GAMBIA", "BANJUL", "CONAKRY", "GUINEA", "SENEGAL", "BISSAU",
-            "CHINA", "INDIA", "PREPAID", "COLLECT", "INVOICE", "DATE", "SHIPPING", "BILL",
-            "CODE", "NUMBER", "MARCHANDISES", "DIVERSES", "CARGO", "CONTAINER"
-        }
-        cleaned_words = [
-            w for w in re.sub(r"[^A-Za-z]", " ", desc.upper()).split()
-            if len(w) > 3 and w not in noise_words
-        ][:3]
+        noise_words = {"PACKAGES", "PACKAGE", "CARTONS", "CARTON", "BALES", "BALE", "PKGS", "CTNS", "PIECES", "SETS", "BOXES", "DRUMS", "ROLLS", "PALLETS", "BAGS", "SACKS", "CRATES", "UNITS", "UNIT", "GENERAL", "GOODS", "DIVERS", "VARIOUS", "ITEMS", "STUFF", "SAID", "CONTAIN", "TOTAL", "GROSS", "WEIGHT", "TRANSIT", "DAKAR", "MALI", "BAMAKO", "GAMBIA", "BANJUL", "CONAKRY", "GUINEA", "SENEGAL", "BISSAU", "CHINA", "INDIA", "PREPAID", "COLLECT", "INVOICE", "DATE", "SHIPPING", "BILL", "CODE", "NUMBER", "MARCHANDISES", "DIVERSES", "CARGO", "CONTAINER"}
+        cleaned_words = [w for w in re.sub(r"[^A-Za-z]", " ", desc.upper()).split() if len(w) > 3 and w not in noise_words][:3]
         if cleaned_words:
             web_info = fast_web_lookup(" ".join(cleaned_words) + " product")
             if web_info:
@@ -743,6 +725,126 @@ def parse_maersk(pdf_text: str, use_web_search: bool = True):
             })
     return rows
 
+def parse_msc(pages_text: list, use_web_search: bool = True):
+    """Parser for Mediterranean Shipping Company (MSC) Cargo Manifests."""
+    rows = []
+    full_text = "\n".join(pages_text)
+
+    ship_m = re.search(r"Vessel\s*:\s*([A-Z0-9 \-]+?)(?:\s*\(\d+\)|\n|$)", full_text, re.IGNORECASE)
+    if not ship_m:
+        ship_m = re.search(r"\b([A-Z0-9 \-]+?)\s*\(\d{4,6}\)\s+[A-Z0-9]{4,8}\b", full_text)
+    ship = ship_m.group(1).strip().upper() if ship_m else "UNKNOWN VESSEL"
+
+    shipments = []
+    current_bl = None
+
+    for page_txt in pages_text:
+        if not page_txt.strip():
+            continue
+        if "SUMMARY" in page_txt.upper() and "EQUIPMENT TYPE" in page_txt.upper():
+            continue
+
+        # Extract 5b. PORT OF DISCHARGE (located right after "BILL ISSUANCE\nMSC <OFFICE>")
+        pod_raw = ""
+        pod_m = re.search(
+            r"BILL ISSUANCE\s*\n\s*MSC\s+[A-Z]+\s+([\s\S]+?)(?=\n\s*(?:(?:MEDU|MSCU)[A-Z]{2}\d|CN:|ABEU\d|GSLU\d|ZIMU\d|FSCU\d|JOLU\d|ECMU\d|Total No\. of containers:|\d[\d,\.]*\s*kgs\.))",
+            page_txt,
+            re.IGNORECASE
+        )
+        if pod_m:
+            pod_raw = pod_m.group(1).strip().upper()
+        else:
+            pod_fb = re.search(r"5b\.\s*PORT OF DISCHARGE[^\n]*\n([^\n]+)", page_txt, re.IGNORECASE)
+            pod_raw = pod_fb.group(1).strip().upper() if pod_fb else "ANTWERP"
+
+        # Strip page header down to the cargo body
+        if pod_m:
+            body = page_txt[pod_m.end():]
+        else:
+            body = page_txt
+
+        # Detect start of a new B/L (e.g. MEDUTM455506) — never matches container numbers like MEDU4571063
+        bl_matches = list(re.finditer(r"(?<!CN:\s)\b((?:MEDU|MSCU)[A-Z]{2}\d{5,8})\b", body))
+        if bl_matches:
+            # Anything before the first B/L on this page belongs to the previous B/L (if any)
+            pre_text = body[:bl_matches[0].start()].strip()
+            if pre_text and current_bl is not None:
+                current_bl["chunks"].append(pre_text)
+
+            for idx, m in enumerate(bl_matches):
+                if current_bl is not None:
+                    shipments.append(current_bl)
+                end_pos = bl_matches[idx + 1].start() if idx + 1 < len(bl_matches) else len(body)
+                current_bl = {
+                    "bl": m.group(1),
+                    "pod": pod_raw,
+                    "chunks": [body[m.start():end_pos]]
+                }
+        else:
+            if current_bl is not None:
+                current_bl["chunks"].append(body)
+
+    if current_bl is not None:
+        shipments.append(current_bl)
+
+    for s in shipments:
+        chunk = "\n".join(s["chunks"])
+        if is_empty_equipment(chunk):
+            continue
+
+        port_info = resolve_port_info(s["pod"], chunk, use_web_search)
+
+        # Container types and quantities from "Total No. of containers: ..."
+        cont_counts = {}
+        tot_cont_m = re.search(r"Total No\. of containers:\s*([^\n]+)", chunk, re.IGNORECASE)
+        if tot_cont_m:
+            for q_str, sz_str in re.findall(r"(\d+)\s*x\s*((?:20|40|45)['\s]*[^\n,]+)", tot_cont_m.group(1), re.IGNORECASE):
+                q_val = int(q_str)
+                if q_val > 0:
+                    ctype = normalize_container(sz_str)
+                    cont_counts[ctype] = cont_counts.get(ctype, 0) + q_val
+
+        if not cont_counts:
+            cn_list = re.findall(r"\bCN:\s*[A-Z]{4}\d{7}\b", chunk)
+            qty_fb = len(cn_list) if cn_list else 1
+            sz_fb = "40R" if "REEF" in chunk.upper() and "40" in chunk else ("40D" if "40'" in chunk or "40 HIGH" in chunk.upper() else "20D")
+            cont_counts = {sz_fb: qty_fb}
+
+        total_cont_qty = sum(cont_counts.values()) or 1
+
+        # Gross Weight: sum container weights (excluding summary line & tare weights)
+        body_no_tot = re.split(r"Total No\. of containers:", chunk, flags=re.IGNORECASE)[0]
+        body_no_tare = re.sub(r"Tare Weight:\s*[\d,\.]+\s*kgs\.?", "", body_no_tot, flags=re.IGNORECASE)
+        wgt_matches = re.findall(r"\b(\d+\.\d{2})\s*kgs\.", body_no_tare, re.IGNORECASE)
+
+        if wgt_matches:
+            total_kg = sum(parse_num(w) for w in wgt_matches)
+        else:
+            tot_wgt_m = re.search(r"Total on this bill of lading:[^\n]*?\b([\d,]+\.\d{2})\b", chunk, re.IGNORECASE)
+            total_kg = parse_num(tot_wgt_m.group(1)) if tot_wgt_m else 0.0
+
+        tonnage = round(total_kg / 1000.0, 2)
+        if tonnage <= 0.0:
+            continue
+
+        # HS code & Description extraction
+        hs_m = re.search(r"(?:HS\s*CODE|Harmonized\s*Code)\s*[:\.]*\s*([\d\.\s]{4,14})", chunk, re.IGNORECASE)
+        hs = re.sub(r"[^0-9]", "", hs_m.group(1))[:10] if hs_m else ""
+
+        desc_clean = re.sub(r"(?:^|\n)\s*(?:SH|CO|NF|CN|SN|MN|Tare Weight|Service Contract|EXPRESS RELEASE|Total No\. of containers|Total on this bill)[^\n]*", "", body_no_tare, flags=re.IGNORECASE)
+        desc_clean = re.sub(r"\b\d+\.\d{2}(?:kgs|lbs|cu\.\s*m|cu\.ft)\.?", "", desc_clean, flags=re.IGNORECASE)
+        comm = classify_commodity(desc_clean, hs, use_web_search)
+
+        for ctype, q_val in cont_counts.items():
+            c_tonnage = round(tonnage * (q_val / total_cont_qty), 2) if len(cont_counts) > 1 else tonnage
+            rows.append({
+                "SHIP": ship, "SHIP LINE": "MEDITERRANEAN SHIPPING COMPANY", "AGENT": "MSC GH. LTD",
+                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
+                "CONTYPE": ctype, "CONTQTY": q_val, "COMMODITY": comm, "TONNAGES": c_tonnage
+            })
+
+    return rows
+
 def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
     """Parser for Grimaldi Deep Sea S.p.A. / Grimaldi Lines Cargo Manifests."""
     rows = []
@@ -762,13 +864,11 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
         if "B/L No." not in page_txt:
             continue
 
-        # Extract Port Of Discharge and Place Of Delivery from page header
         pod_val = ""
         del_val = ""
         hdr_m = re.search(r"\|[^\n]*Port Of Discharge[^\n]*\n(\|[^\n]+)", page_txt, re.IGNORECASE)
         if hdr_m:
             cols = [c.strip() for c in hdr_m.group(1).split("|")]
-            # Expected columns: ['', Nationality, Master, PlaceOfReceipt, POL, POD, PlaceOfDelivery, '']
             if len(cols) >= 7:
                 pod_val = cols[5].upper()
                 del_val = cols[6].upper()
@@ -780,15 +880,12 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
 
         page_dest = del_val if del_val else pod_val
 
-        # Isolate table body below the "|B/L No. |" header separator
-        body_m = re.search(r"\|B/L No\.[^\n]*\n\|[-]+\|\s*\n([\s\S]*)", page_txt, re.IGNORECASE)
+        body_m = re.search(r"\|B/L No\.[^\n]*\n\|[-]+\|[ \t]*\n([\s\S]*)", page_txt, re.IGNORECASE)
         body = body_m.group(1) if body_m else page_txt
 
         for line in body.splitlines():
-            # Skip dashed divider lines
             if re.match(r"^\s*\|?[-]{5,}\|?\s*$", line):
                 continue
-            # Detect new shipment row starting in the B/L No. column (e.g. S330464854, S330497973[T], [P30117861100])
             bl_m = re.match(r"^\s*\|?\s*(\[?[A-Z]\d{8,12}(?:\[[A-Z0-9]+\])?\]?)\s*\|", line)
             if bl_m:
                 if current_bl:
@@ -807,7 +904,6 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
 
         port_info = resolve_port_info(s["pod"], chunk, use_web_search)
 
-        # Extract container types and counts (e.g. "1-20 ft. Dry Cargo", "1-40 ft. Reefer High Cube")
         cont_matches = re.findall(r"\b(\d+)\s*-\s*((?:20|40)\s*ft\.?[^\n\|]*)", chunk, re.IGNORECASE)
         cont_counts = {}
         for q_str, desc_sz in cont_matches:
@@ -822,7 +918,6 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
 
         total_cont_qty = sum(cont_counts.values()) or 1
 
-        # Extract gross cargo weights from "CN : ..." lines (excluding TARE lines)
         cn_weights = re.findall(r"CN\s*:\s*[A-Z0-9]+[^\n]*?\|\s*([\d,]+\.\d{2})\s*\|", chunk)
         if not cn_weights:
             no_tare = re.sub(r"[^\n]*\bTARE\b[^\n]*", "", chunk, flags=re.IGNORECASE)
@@ -834,13 +929,12 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
         if tonnage <= 0.0:
             continue
 
-        # Extract Description Of Goods strictly from column 4 (avoids Shipper/Consignee/Notify addresses)
         desc_lines = []
         for line in s["lines"]:
             cols = line.split("|")
             if len(cols) >= 6:
                 cell = cols[4].strip()
-                if cell and not re.match(r"^(?:\d+-(?:20|40)\s*ft\.|CONTAINER\(S\)|Freight payable|Continue On Next Page)", cell, re.IGNORECASE):
+                if cell and not re.match(r"^(?:TARE|\d+-(?:20|40)\s*ft\.|CONTAINER\(S\)|Freight payable|Continue On Next Page)", cell, re.IGNORECASE):
                     desc_lines.append(cell)
 
         if not desc_lines:
@@ -908,7 +1002,7 @@ def parse_ael(pdf_text: str, use_web_search: bool = True):
 # ==========================================
 
 st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Universal Manifest Coding System (Maersk, Grimaldi, PIL, ONE, Arkas, Cosco, Gold Star, AEL, CMA CGM).")
+st.markdown("Universal Manifest Coding System (Maersk, MSC, Grimaldi, PIL, ONE, Arkas, Cosco, Gold Star, AEL, CMA CGM).")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -981,6 +1075,8 @@ if uploaded_files:
             parsed = []
             if "ML EXPORT MANIFEST" in upper_text or "MAERSK LINE" in upper_text or re.search(r"\bMAEU\b", upper_text):
                 parsed = parse_maersk(full_text, enable_web_search)
+            elif "MEDITERRANEAN SHIPPING" in upper_text or re.search(r"\b(?:MEDU|MSCU)[A-Z]{2}\d{5,8}\b", upper_text):
+                parsed = parse_msc(pages_text, enable_web_search)
             elif "GRIMALDI DEEP SEA" in upper_text or "GRIMALDI LINES" in upper_text or "GRIMALDI GHANA" in upper_text:
                 parsed = parse_grimaldi(full_text, enable_web_search)
             elif "OCEAN NETWORK EXPRESS" in upper_text or re.search(r"\bONEY[A-Z0-9]{6,}\b", upper_text) or "DAMMAM EXPRESS" in upper_text:
