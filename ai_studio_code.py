@@ -732,6 +732,8 @@ def parse_msc(pages_text: list, use_web_search: bool = True):
 
     ship_m = re.search(r"Vessel\s*:\s*([A-Z0-9 \-]+?)(?:\s*\(\d+\)|\n|$)", full_text, re.IGNORECASE)
     if not ship_m:
+        ship_m = re.search(r"\b(MSC\s+[A-Z0-9 \-]+?)\s*\(\d{4,6}\)", full_text, re.IGNORECASE)
+    if not ship_m:
         ship_m = re.search(r"\b([A-Z0-9 \-]+?)\s*\(\d{4,6}\)\s+[A-Z0-9]{4,8}\b", full_text)
     ship = ship_m.group(1).strip().upper() if ship_m else "UNKNOWN VESSEL"
 
@@ -741,32 +743,38 @@ def parse_msc(pages_text: list, use_web_search: bool = True):
     for page_txt in pages_text:
         if not page_txt.strip():
             continue
-        if "SUMMARY" in page_txt.upper() and "EQUIPMENT TYPE" in page_txt.upper():
+        upper_pg = page_txt.upper()
+        if "SUMMARY" in upper_pg and ("EQUIPMENT TYPE" in upper_pg or "GRAND TOTAL" in upper_pg):
             continue
 
-        # Extract 5b. PORT OF DISCHARGE (located right after "BILL ISSUANCE\nMSC <OFFICE>")
+        # Extract 5b. PORT OF DISCHARGE from page header (excluding Transshipment port)
         pod_raw = ""
-        pod_m = re.search(
-            r"BILL ISSUANCE\s*\n\s*MSC\s+[A-Z]+\s+([\s\S]+?)(?=\n\s*(?:(?:MEDU|MSCU)[A-Z]{2}\d|CN:|ABEU\d|GSLU\d|ZIMU\d|FSCU\d|JOLU\d|ECMU\d|Total No\. of containers:|\d[\d,\.]*\s*kgs\.))",
+        hdr_slice_m = re.search(
+            r"(?:BILL ISSUANCE|5b\.\s*PORT OF DISCHARGE)([\s\S]+?)(?=SHIPPER\s*\(SH\)|B/L NR\.|MEDU[A-Z]{1,3}\d|MSCU[A-Z]{1,3}\d|$)",
             page_txt,
             re.IGNORECASE
         )
-        if pod_m:
-            pod_raw = pod_m.group(1).strip().upper()
-        else:
-            pod_fb = re.search(r"5b\.\s*PORT OF DISCHARGE[^\n]*\n([^\n]+)", page_txt, re.IGNORECASE)
-            pod_raw = pod_fb.group(1).strip().upper() if pod_fb else "ANTWERP"
+        if hdr_slice_m:
+            hdr_clean = hdr_slice_m.group(1)
+            hdr_clean = re.sub(r"Transshipment:[^\n]*", "", hdr_clean, flags=re.IGNORECASE)
+            hdr_clean = re.sub(r"\b(?:MSC\s+TEMA|TEMA|Panama|PLACE OF RECEIPT|FINAL DESTINATION|5a\.\s*PORT OF LOADING|5b\.\s*PORT OF DISCHARGE|3\.-\s*NATIONALITY OF SHIP|\(not required in U\.S\.\)|BILL ISSUANCE)\b", "", hdr_clean, flags=re.IGNORECASE)
+            pod_raw = re.sub(r"\s+", " ", hdr_clean).strip().upper()
 
-        # Strip page header down to the cargo body
-        if pod_m:
-            body = page_txt[pod_m.end():]
-        else:
-            body = page_txt
+        if not pod_raw:
+            pod_raw = "ANTWERP"
 
-        # Detect start of a new B/L (e.g. MEDUTM455506) — never matches container numbers like MEDU4571063
-        bl_matches = list(re.finditer(r"(?<!CN:\s)\b((?:MEDU|MSCU)[A-Z]{2}\d{5,8})\b", body))
+        # Strip static header block down to cargo rows if clearly bounded; never drop B/L numbers
+        body = page_txt
+        tbl_hdr_m = re.search(r"(?:Service Contract|9\s*-\s*MEASURMENT|DESCRIPTION OF GOODS)[^\n]*\n", page_txt, re.IGNORECASE)
+        if tbl_hdr_m:
+            after_hdr = page_txt[tbl_hdr_m.end():]
+            # Only use stripped body if it didn't accidentally skip a B/L number above it
+            if re.search(r"\b(?:MEDU|MSCU)[A-Z]{1,3}\d{5,9}\b", after_hdr) or not re.search(r"\b(?:MEDU|MSCU)[A-Z]{1,3}\d{5,9}\b", page_txt):
+                body = after_hdr
+
+        # Match MSC B/L numbers (e.g. MEDUTM455506) — ignores container numbers (e.g. CN: MEDU4571063)
+        bl_matches = list(re.finditer(r"(?<!CN:\s)\b((?:MEDU|MSCU)[A-Z]{1,3}\d{5,9})\b", body))
         if bl_matches:
-            # Anything before the first B/L on this page belongs to the previous B/L (if any)
             pre_text = body[:bl_matches[0].start()].strip()
             if pre_text and current_bl is not None:
                 current_bl["chunks"].append(pre_text)
@@ -812,27 +820,30 @@ def parse_msc(pages_text: list, use_web_search: bool = True):
 
         total_cont_qty = sum(cont_counts.values()) or 1
 
-        # Gross Weight: sum container weights (excluding summary line & tare weights)
-        body_no_tot = re.split(r"Total No\. of containers:", chunk, flags=re.IGNORECASE)[0]
-        body_no_tare = re.sub(r"Tare Weight:\s*[\d,\.]+\s*kgs\.?", "", body_no_tot, flags=re.IGNORECASE)
-        wgt_matches = re.findall(r"\b(\d+\.\d{2})\s*kgs\.", body_no_tare, re.IGNORECASE)
+        # Gross Weight: check "Total on this bill of lading:" first (ignoring cu. m.), then sum container weights
+        total_kg = 0.0
+        tot_line_m = re.search(r"Total on this bill of lading:([^\n]+)", chunk, re.IGNORECASE)
+        if tot_line_m:
+            tot_line_clean = re.sub(r"[\d,\.]+\s*cu\.\s*m\.?", "", tot_line_m.group(1), flags=re.IGNORECASE)
+            tot_nums = re.findall(r"\b(\d[\d,]*\.\d{2})\b", tot_line_clean)
+            if tot_nums:
+                total_kg = parse_num(tot_nums[-1])
 
-        if wgt_matches:
+        body_no_tot = re.split(r"Total No\. of containers:", chunk, flags=re.IGNORECASE)[0]
+        body_no_net = re.sub(r"(?:NET\s*WEIGHT|Tare\s*Weight)[^\n]*", "", body_no_tot, flags=re.IGNORECASE)
+        if total_kg <= 0.0:
+            wgt_matches = re.findall(r"\b(\d[\d,]*\.\d{2})\s*kgs\.", body_no_net, re.IGNORECASE)
             total_kg = sum(parse_num(w) for w in wgt_matches)
-        else:
-            tot_wgt_m = re.search(r"Total on this bill of lading:[^\n]*?\b([\d,]+\.\d{2})\b", chunk, re.IGNORECASE)
-            total_kg = parse_num(tot_wgt_m.group(1)) if tot_wgt_m else 0.0
 
         tonnage = round(total_kg / 1000.0, 2)
         if tonnage <= 0.0:
             continue
 
-        # HS code & Description extraction
         hs_m = re.search(r"(?:HS\s*CODE|Harmonized\s*Code)\s*[:\.]*\s*([\d\.\s]{4,14})", chunk, re.IGNORECASE)
         hs = re.sub(r"[^0-9]", "", hs_m.group(1))[:10] if hs_m else ""
 
-        desc_clean = re.sub(r"(?:^|\n)\s*(?:SH|CO|NF|CN|SN|MN|Tare Weight|Service Contract|EXPRESS RELEASE|Total No\. of containers|Total on this bill)[^\n]*", "", body_no_tare, flags=re.IGNORECASE)
-        desc_clean = re.sub(r"\b\d+\.\d{2}(?:kgs|lbs|cu\.\s*m|cu\.ft)\.?", "", desc_clean, flags=re.IGNORECASE)
+        desc_clean = re.sub(r"(?:^|\n)\s*(?:SH|CO|NF|CN|SN|MN|Tare Weight|Service Contract|EXPRESS RELEASE|Total No\. of containers|Total on this bill)[^\n]*", "", body_no_net, flags=re.IGNORECASE)
+        desc_clean = re.sub(r"\b\d[\d,]*\.\d{2}(?:kgs|lbs|cu\.\s*m|cu\.ft)\.?", "", desc_clean, flags=re.IGNORECASE)
         comm = classify_commodity(desc_clean, hs, use_web_search)
 
         for ctype, q_val in cont_counts.items():
@@ -886,261 +897,4 @@ def parse_grimaldi(pdf_text: str, use_web_search: bool = True):
         for line in body.splitlines():
             if re.match(r"^\s*\|?[-]{5,}\|?\s*$", line):
                 continue
-            bl_m = re.match(r"^\s*\|?\s*(\[?[A-Z]\d{8,12}(?:\[[A-Z0-9]+\])?\]?)\s*\|", line)
-            if bl_m:
-                if current_bl:
-                    shipments.append(current_bl)
-                current_bl = {"bl": bl_m.group(1), "pod": page_dest, "lines": [line]}
-            elif current_bl is not None:
-                current_bl["lines"].append(line)
-
-    if current_bl:
-        shipments.append(current_bl)
-
-    for s in shipments:
-        chunk = "\n".join(s["lines"])
-        if is_empty_equipment(chunk) or s["pod"] == "XXX":
-            continue
-
-        port_info = resolve_port_info(s["pod"], chunk, use_web_search)
-
-        cont_matches = re.findall(r"\b(\d+)\s*-\s*((?:20|40)\s*ft\.?[^\n\|]*)", chunk, re.IGNORECASE)
-        cont_counts = {}
-        for q_str, desc_sz in cont_matches:
-            q_val = int(q_str)
-            if q_val <= 0:
-                continue
-            ctype = normalize_container(desc_sz)
-            cont_counts[ctype] = cont_counts.get(ctype, 0) + q_val
-
-        if not cont_counts:
-            cont_counts = {"20D": 1}
-
-        total_cont_qty = sum(cont_counts.values()) or 1
-
-        cn_weights = re.findall(r"CN\s*:\s*[A-Z0-9]+[^\n]*?\|\s*([\d,]+\.\d{2})\s*\|", chunk)
-        if not cn_weights:
-            no_tare = re.sub(r"[^\n]*\bTARE\b[^\n]*", "", chunk, flags=re.IGNORECASE)
-            no_tare = re.sub(r"[^\n]*Freight payable[^\n]*", "", no_tare, flags=re.IGNORECASE)
-            cn_weights = re.findall(r"(?:^|\||\s)([\d,]+\.\d{2})\s*(?:\||$)", no_tare)
-
-        total_kg = sum(parse_num(w) for w in cn_weights)
-        tonnage = round(total_kg / 1000.0, 2)
-        if tonnage <= 0.0:
-            continue
-
-        desc_lines = []
-        for line in s["lines"]:
-            cols = line.split("|")
-            if len(cols) >= 6:
-                cell = cols[4].strip()
-                if cell and not re.match(r"^(?:TARE|\d+-(?:20|40)\s*ft\.|CONTAINER\(S\)|Freight payable|Continue On Next Page)", cell, re.IGNORECASE):
-                    desc_lines.append(cell)
-
-        if not desc_lines:
-            d_fb = re.search(r"CONTAINER\(S\)\s*SAID\s+TO\s+CONTAIN\s*([\s\S]+?)(?:Freight payable|CN\s*:|$)", chunk, re.IGNORECASE)
-            if d_fb:
-                desc_lines.append(d_fb.group(1))
-
-        desc = " ".join(desc_lines).strip()
-        comm = classify_commodity(desc, use_web_search=use_web_search)
-
-        for ctype, q_val in cont_counts.items():
-            c_tonnage = round(tonnage * (q_val / total_cont_qty), 2) if len(cont_counts) > 1 else tonnage
-            rows.append({
-                "SHIP": ship, "SHIP LINE": "GRIMALDI LINES", "AGENT": "GRIMALDI GHANA LTD",
-                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
-                "CONTYPE": ctype, "CONTQTY": q_val, "COMMODITY": comm, "TONNAGES": c_tonnage
-            })
-
-    return rows
-
-def parse_ael(pdf_text: str, use_web_search: bool = True):
-    rows = []
-    ship_m = re.search(r"Name of ship:\s*([^\n]+)", pdf_text, re.IGNORECASE)
-    ship = ship_m.group(1).strip().upper() if ship_m else "UNKNOWN VESSEL"
-
-    bl_chunks = re.split(r"(?:\n|^)(?=TEMPOV\w+|TEMDKR\w+|TAKPOV\w+|TAKDKR\w+)", pdf_text)
-    for chunk in bl_chunks[1:]:
-        if is_empty_equipment(chunk):
-            continue
-
-        pod_m = re.search(r"Port of Discharge:\s*([^\n]+)", chunk if "Port of Discharge:" in chunk else pdf_text, re.IGNORECASE)
-        pod_raw = pod_m.group(1).strip().upper() if pod_m else "PORT VENDRES"
-        port_info = resolve_port_info(pod_raw, chunk, use_web_search)
-
-        is_breakbulk = "PALLETS IN HOLD" in chunk.upper()
-        if is_breakbulk:
-            cont_type = ""
-            cont_qty = None
-        else:
-            cont_m = re.search(r"(\d+)\s*X\s*40['\s]*hc reefer", chunk, re.IGNORECASE)
-            cont_qty = int(cont_m.group(1)) if cont_m else 1
-            cont_type = "40R"
-
-        wgt_m = re.search(r"TOTAL GROSS WEIGHT\s*:\s*([\d \t\.,]+)\s*(KGS|KG|MTS|MT)", chunk, re.IGNORECASE)
-        tonnage = to_tonnes(parse_num(wgt_m.group(1)), wgt_m.group(2)) if wgt_m else 0.0
-
-        upper_chunk = chunk.upper()
-        if re.search(r"\bYAMS?\b", upper_chunk):
-            comm = "LYM"
-        elif "BANANA" in upper_chunk:
-            comm = "LBN"
-        else:
-            comm = "LPN"
-
-        if tonnage > 0:
-            rows.append({
-                "SHIP": ship, "SHIP LINE": "AFRICA EXPRESS LINE", "AGENT": "EOLIS GH. LTD",
-                "PORT": port_info[0], "CTRY": port_info[1], "RANGE": port_info[2],
-                "CONTYPE": cont_type, "CONTQTY": cont_qty, "COMMODITY": comm, "TONNAGES": tonnage
-            })
-    return rows
-
-# ==========================================
-# 4. USER INTERFACE & ROUTING
-# ==========================================
-
-st.title("🚢 Ghana Ports Export Manifest Auto-Coder")
-st.markdown("Universal Manifest Coding System (Maersk, MSC, Grimaldi, PIL, ONE, Arkas, Cosco, Gold Star, AEL, CMA CGM).")
-
-col1, col2, col3 = st.columns([1, 1, 1])
-
-with col1:
-    month_selected = st.selectbox("Select Operating Month", [
-        "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-        "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
-    ], index=8)
-
-with col2:
-    rotation_option = st.selectbox("Document Orientation / Rotation", [
-        "0° (Normal / Upright)",
-        "90° Clockwise (Sideways / Landscape)",
-        "180° (Upside Down)",
-        "270° (Counter-Clockwise)"
-    ], index=0)
-
-    rotation_degrees = {
-        "0° (Normal / Upright)": 0,
-        "90° Clockwise (Sideways / Landscape)": 90,
-        "180° (Upside Down)": 180,
-        "270° (Counter-Clockwise)": 270
-    }[rotation_option]
-
-with col3:
-    enable_web_search = st.checkbox("🌐 Enable Web Search (Ports & Commodities)", value=True)
-    show_debug_text = st.checkbox("Show Raw Text Preview (Diagnostics)", value=False)
-
-uploaded_files = st.file_uploader("Upload Manifest PDFs", type=["pdf"], accept_multiple_files=True)
-
-if uploaded_files:
-    start_btn = st.button("🚀 Process & Code Manifest", type="primary", use_container_width=True)
-
-    if start_btn:
-        all_extracted_rows = []
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        for idx, uploaded_file in enumerate(uploaded_files):
-            file_bytes = uploaded_file.read()
-            pages_text = []
-
-            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-                total_pages = len(doc)
-                for p_idx in range(total_pages):
-                    status_text.text(f"Reading page {p_idx + 1} of {total_pages} ({uploaded_file.name})...")
-                    page = doc[p_idx]
-                    if rotation_degrees != 0:
-                        page.set_rotation(rotation_degrees)
-
-                    txt = page.get_text("text")
-                    if len(txt.strip()) < 30 and len(page.get_images()) > 0:
-                        pix = page.get_pixmap(dpi=150)
-                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                        try:
-                            txt = pytesseract.image_to_string(img)
-                        except Exception:
-                            pass
-                    pages_text.append(txt)
-
-            full_text = "\n".join(pages_text)
-            upper_text = full_text.upper()
-
-            if show_debug_text:
-                with st.expander(f"🔍 Raw Text Preview ({uploaded_file.name})"):
-                    st.text(full_text[:1500] if full_text else "[NO TEXT EXTRACTED]")
-
-            status_text.text("Detecting shipping carrier and extracting cargo rows...")
-
-            parsed = []
-            if "ML EXPORT MANIFEST" in upper_text or "MAERSK LINE" in upper_text or re.search(r"\bMAEU\b", upper_text):
-                parsed = parse_maersk(full_text, enable_web_search)
-            elif "MEDITERRANEAN SHIPPING" in upper_text or re.search(r"\b(?:MEDU|MSCU)[A-Z]{2}\d{5,8}\b", upper_text):
-                parsed = parse_msc(pages_text, enable_web_search)
-            elif "GRIMALDI DEEP SEA" in upper_text or "GRIMALDI LINES" in upper_text or "GRIMALDI GHANA" in upper_text:
-                parsed = parse_grimaldi(full_text, enable_web_search)
-            elif "OCEAN NETWORK EXPRESS" in upper_text or re.search(r"\bONEY[A-Z0-9]{6,}\b", upper_text) or "DAMMAM EXPRESS" in upper_text:
-                parsed = parse_one(full_text, enable_web_search)
-            elif re.search(r"\bPIL\b", upper_text) or "PACIFIC INTERNATIONAL" in upper_text or "KOTA SYDNEY" in upper_text:
-                parsed = parse_pil(full_text, enable_web_search)
-            elif "GOLD STAR" in upper_text or "GOSUTEM" in upper_text or "CONDOR 630/E" in upper_text:
-                parsed = parse_goldstar(full_text, enable_web_search)
-            elif "ARKAS" in upper_text or re.search(r"\bARKU\d{5,}\b", upper_text) or "MICHEL A" in upper_text or "APM TERMINALS BARCELONA" in upper_text:
-                parsed = parse_arkas(full_text, enable_web_search)
-            elif "COSCO SHIPPING" in upper_text or re.search(r"\bCOSU\d{5,}\b", upper_text) or "EXPORT REPORT MANIFEST" in upper_text:
-                parsed = parse_cosco(full_text, enable_web_search)
-            elif "EOLIS" in upper_text or "CAMEROUN EXPRESS" in upper_text or "AFRICA EXPRESS" in upper_text or re.search(r"\b(?:TEMPOV|TEMDKR)\w+\b", upper_text):
-                parsed = parse_ael(full_text, enable_web_search)
-            else:
-                parsed = parse_maersk(full_text, enable_web_search)
-
-            for r in parsed:
-                r["MONTH"] = month_selected
-                all_extracted_rows.append(r)
-
-            progress_bar.progress((idx + 1) / len(uploaded_files))
-
-        status_text.empty()
-        progress_bar.empty()
-
-        if all_extracted_rows:
-            df = pd.DataFrame(all_extracted_rows)
-            col_order = ["MONTH", "SHIP", "SHIP LINE", "AGENT", "PORT", "CTRY", "RANGE", "CONTYPE", "CONTQTY", "COMMODITY", "TONNAGES"]
-            df = df[col_order]
-            df["CONTQTY"] = pd.to_numeric(df["CONTQTY"], errors="coerce").astype("Int64")
-            df["TONNAGES"] = pd.to_numeric(df["TONNAGES"], errors="coerce")
-
-            st.success(f"Successfully processed and coded {len(df)} manifest rows!")
-            st.subheader("Interactive Review Screen (Edit if needed)")
-            edited_df = st.data_editor(
-                df,
-                use_container_width=True,
-                num_rows="dynamic",
-                column_config={
-                    "TONNAGES": st.column_config.NumberColumn("TONNAGES", format="%.2f")
-                }
-            )
-
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                edited_df.to_excel(writer, index=False, sheet_name="CODED MANIFEST")
-                ws = writer.sheets["CODED MANIFEST"]
-                tonnages_col_idx = col_order.index("TONNAGES") + 1
-                for r_idx in range(2, len(edited_df) + 2):
-                    cell = ws.cell(row=r_idx, column=tonnages_col_idx)
-                    if cell.value is not None and pd.notna(cell.value):
-                        try:
-                            cell.value = float(cell.value)
-                            cell.number_format = "0.00"
-                        except (ValueError, TypeError):
-                            pass
-
-            current_year = datetime.now().year
-            st.download_button(
-                label="📥 Download Coded Excel Sheet (.xlsx)",
-                data=buffer.getvalue(),
-                file_name=f"{month_selected} {current_year} CODING.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.error("No valid cargo rows were found. Tip: Check 'Show Raw Text Preview' to inspect the extracted text.")
+            bl_m = re.match(r"^\s*\|?\s*(\[?[A-Z]\d{8,12}(?:\[[A-
